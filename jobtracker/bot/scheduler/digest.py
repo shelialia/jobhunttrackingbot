@@ -2,23 +2,25 @@ from datetime import datetime
 from telegram import Bot
 from ..db import tasks as tasks_db, users as users_db
 
+_EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞", "application": "📝"}
+
 
 def _format_task(row) -> str:
     company = row["company"] or "Unknown"
-    task_type = row["type"].upper()
+    emoji = _EMOJI.get(row["type"], "📌")
+    type_label = row["type"].upper()
     if row["deadline"]:
         dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
         days = (dt - datetime.utcnow()).days
         if days < 0:
-            deadline_str = f"OVERDUE ({abs(days)}d ago)"
+            deadline_str = f"⚠️ OVERDUE {abs(days)}d ago"
         elif days == 0:
-            deadline_str = "due TODAY"
+            deadline_str = "🔴 DUE TODAY"
         else:
-            deadline_str = f"due in {days}d"
+            deadline_str = f"{days}d remaining"
     else:
         deadline_str = "no deadline"
-
-    return f"• {company} — {task_type} ({deadline_str})"
+    return f"{emoji} *{company}* — {type_label} [{deadline_str}]"
 
 
 async def send_daily_digest(bot: Bot) -> None:
@@ -34,9 +36,9 @@ async def send_daily_digest(bot: Bot) -> None:
         if not rows:
             continue
 
-        lines = [f"*Daily digest — {datetime.utcnow().strftime('%Y-%m-%d')}*\n"]
+        lines = [f"☀️ *Daily Digest — {datetime.utcnow().strftime('%d %b %Y')}*\n"]
         lines += [_format_task(r) for r in rows]
-        lines.append("\nUse /status for full details or /done <company> to mark complete.")
+        lines.append("\n_Use /tasks for details or /done <company> to mark complete._")
 
         try:
             await bot.send_message(

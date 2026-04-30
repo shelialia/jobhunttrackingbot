@@ -3,23 +3,24 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks
 
+_EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞", "application": "📝"}
+
 
 async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
     rows = tasks.get_upcoming_tasks(telegram_id)
 
     if not rows:
-        await update.message.reply_text("Nothing due in the next 7 days.")
+        await update.message.reply_text("🎉 Nothing due in the next 7 days!")
         return
 
-    lines = ["*Due in the next 7 days:*\n"]
+    lines = ["📅 *Due in the next 7 days:*\n"]
     for row in rows:
         dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
         days = (dt - datetime.utcnow()).days
-        tag = "TODAY" if days == 0 else f"in {days}d"
-        lines.append(
-            f"• *{row['company']}* — {row['type'].upper()} ({tag})\n"
-            f"  {row['role'] or ''}"
-        )
+        tag = "🔴 TODAY" if days == 0 else f"{days}d"
+        emoji = _EMOJI.get(row["type"], "📌")
+        role_line = f"\n   _{row['role']}_" if row["role"] else ""
+        lines.append(f"{emoji} *{row['company']}* — {row['type'].upper()} [{tag}]{role_line}")
 
-    await update.message.reply_text("\n\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")

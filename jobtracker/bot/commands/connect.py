@@ -14,14 +14,16 @@ async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if user["gmail_token_json"]:
         await update.message.reply_text(
-            "Your Gmail is already connected. "
+            "✅ Your Gmail is already connected!\n\n"
             "Use /scan to trigger a manual inbox check."
         )
         return
 
     auth_url = get_auth_url(telegram_id)
     await update.message.reply_text(
-        "Click the link below to authorise Gmail access:\n\n"
+        "🔗 *Connect your Gmail account*\n\n"
+        "Tap the link below to authorise Gmail access:\n\n"
         f"{auth_url}\n\n"
-        "After authorising, I'll start monitoring your inbox automatically."
+        "After authorising, use /scan to do your first inbox scan.",
+        parse_mode="Markdown",
     )
