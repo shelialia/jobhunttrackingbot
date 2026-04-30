@@ -1,70 +1,83 @@
 import os
 import logging
 from dotenv import load_dotenv
+from telegram import BotCommand
 from telegram.ext import Application, CommandHandler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 
 from .db.schema import init_db
 from .commands.start import start
 from .commands.connect import connect
-from .commands.status import status
 from .commands.upcoming import upcoming
-from .commands.stats import stats
 from .commands.scan import scan
+from .commands.tasks import tasks_cmd
+from .commands.applied import applied
+from .commands.stats import stats
 from .commands.done import done
+from .commands.offer import offer
+from .commands.reject import reject
+from .commands.confirm import confirm
 from .commands.add import add
 from .commands.remove import remove
-from .commands.cycles import list_cycles, new_cycle
 from .commands.help import help_cmd
 from .scheduler.digest import send_daily_digest
-from .scheduler.nudge import send_deadline_nudges
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+_COMMANDS = [
+    BotCommand("tasks", "Assessments and interviews to complete"),
+    BotCommand("applied", "All applications submitted"),
+    BotCommand("stats", "Your job hunt stats"),
+    BotCommand("scan", "Manually scan Gmail now"),
+    BotCommand("done", "Mark a task as done"),
+    BotCommand("offer", "Mark an application as an offer"),
+    BotCommand("reject", "Mark an application as rejected"),
+    BotCommand("remove", "Delete a task"),
+    BotCommand("confirm", "Confirm a pending action"),
+    BotCommand("add", "Manually add a task"),
+    BotCommand("connect", "Connect your Gmail account"),
+    BotCommand("help", "List all commands"),
+]
+
+
+async def _post_init(application: Application) -> None:
+    await application.bot.set_my_commands(_COMMANDS)
+    logger.info("Bot commands registered")
 
 
 def main() -> None:
     init_db()
 
     token = os.environ["TELEGRAM_BOT_TOKEN"]
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(_post_init).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("connect", connect))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("upcoming", upcoming))
-    app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("scan", scan))
+    app.add_handler(CommandHandler("tasks", tasks_cmd))
+    app.add_handler(CommandHandler("applied", applied))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("upcoming", upcoming))
     app.add_handler(CommandHandler("done", done))
+    app.add_handler(CommandHandler("offer", offer))
+    app.add_handler(CommandHandler("reject", reject))
+    app.add_handler(CommandHandler("confirm", confirm))
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("remove", remove))
-    app.add_handler(CommandHandler("cycles", list_cycles))
-    app.add_handler(CommandHandler("newcycle", new_cycle))
     app.add_handler(CommandHandler("help", help_cmd))
 
     scheduler = AsyncIOScheduler()
-    bot = app.bot
-
     scheduler.add_job(
         send_daily_digest,
         CronTrigger(hour=1, minute=0),
-        args=[bot],
+        args=[app.bot],
         id="daily_digest",
         name="Daily digest",
         replace_existing=True,
     )
-    scheduler.add_job(
-        send_deadline_nudges,
-        IntervalTrigger(hours=1),
-        args=[bot],
-        id="hourly_nudge",
-        name="Hourly deadline nudge",
-        replace_existing=True,
-    )
-
     scheduler.start()
     logger.info("Scheduler started")
 

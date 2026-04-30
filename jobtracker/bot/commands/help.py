@@ -2,20 +2,25 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 HELP_TEXT = """
-*Job Hunt Tracker — Commands*
+🤖 *Job Hunt Tracker — Commands*
 
-/start — Onboard and create your first cycle
-/connect — Connect your Gmail account
-/status — All pending tasks sorted by urgency
+📋 *Tracking*
+/tasks — Assessments & interviews to complete
+/applied — All applications submitted
+/stats — Your job hunt stats
 /upcoming — Tasks due in the next 7 days
-/stats — Current cycle statistics
-/stats <label> — Stats for a named past cycle
-/scan — Manually trigger a Gmail scan
-/done <company> — Mark a task as done
+
+✅ *Actions*
+/done <task_number> — Mark a task as done
+/offer <app_number> — Mark an application as an offer
+/reject <app_number> — Mark an application as rejected
+/remove <task_number or app_number> — Delete a task or application
+/confirm — Confirm a pending action
+
+✏️ *Management*
+/scan — Scan Gmail for new tasks
 /add <company> [date] [type] — Add a task manually
-/remove <company> — Remove a wrongly detected task
-/cycles — List all your cycles
-/newcycle <label> — Close current cycle and start a new one
+/connect — Connect your Gmail account
 /help — Show this message
 """.strip()
 
