@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -31,3 +32,12 @@ def extract_subject_and_body(message: dict) -> tuple[str, str]:
 
 def get_gmail_id(message: dict) -> Optional[str]:
     return message.get("id")
+
+
+def get_email_date(message: dict) -> Optional[str]:
+    """Return the email's received date as an ISO 8601 string, or None."""
+    ms = message.get("internalDate")
+    if not ms:
+        return None
+    dt = datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")

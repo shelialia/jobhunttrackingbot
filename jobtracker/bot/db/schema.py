@@ -25,23 +25,12 @@ def init_db() -> None:
                 email TEXT,
                 gmail_token_json TEXT,
                 last_scanned_at TIMESTAMP,
-                active_cycle_id INTEGER REFERENCES cycles(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS cycles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER NOT NULL REFERENCES users(telegram_id),
-                label TEXT NOT NULL,
-                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                ended_at TIMESTAMP,
-                status TEXT NOT NULL DEFAULT 'active'
             );
 
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 telegram_id INTEGER NOT NULL REFERENCES users(telegram_id),
-                cycle_id INTEGER REFERENCES cycles(id),
                 source_application_id INTEGER REFERENCES tasks(id),
                 gmail_id TEXT,
                 type TEXT NOT NULL,
@@ -51,6 +40,7 @@ def init_db() -> None:
                 role_normalised TEXT,
                 deadline TIMESTAMP,
                 link TEXT,
+                email_date TIMESTAMP,
                 status TEXT NOT NULL DEFAULT 'incomplete',
                 is_ghost INTEGER NOT NULL DEFAULT 0,
                 nudged_at TIMESTAMP,
@@ -67,3 +57,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_tasks_deadline
                 ON tasks(telegram_id, status, deadline);
         """)
+        # migration: add email_date if it doesn't exist yet
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(tasks)")}
+        if "email_date" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN email_date TIMESTAMP")
