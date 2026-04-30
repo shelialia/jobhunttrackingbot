@@ -7,6 +7,9 @@ token.json
 data/
 *.db
 
+# Virtual environment
+.venv/
+
 # Python
 __pycache__/
 *.py[cod]
