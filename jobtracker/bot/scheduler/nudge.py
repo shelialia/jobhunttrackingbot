@@ -9,7 +9,13 @@ async def send_deadline_nudges(bot: Bot) -> None:
         telegram_id = task["telegram_id"]
         company = task["company"] or "Unknown"
         task_type = task["type"].upper()
-        deadline = task["deadline"][:16].replace("T", " ") if task["deadline"] else "soon"
+        from datetime import datetime
+        dl = task["deadline"]
+        if dl:
+            dt = dl if isinstance(dl, datetime) else datetime.fromisoformat(dl)
+            deadline = dt.strftime("%Y-%m-%d %H:%M")
+        else:
+            deadline = "soon"
 
         message = (
             f"Deadline reminder: *{company}* — {task_type}\n"

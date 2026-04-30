@@ -7,17 +7,14 @@ def _format_task(row) -> str:
     company = row["company"] or "Unknown"
     task_type = row["type"].upper()
     if row["deadline"]:
-        try:
-            dt = datetime.fromisoformat(row["deadline"])
-            days = (dt - datetime.utcnow()).days
-            if days < 0:
-                deadline_str = f"OVERDUE ({abs(days)}d ago)"
-            elif days == 0:
-                deadline_str = "due TODAY"
-            else:
-                deadline_str = f"due in {days}d"
-        except ValueError:
-            deadline_str = row["deadline"][:10]
+        dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
+        days = (dt - datetime.utcnow()).days
+        if days < 0:
+            deadline_str = f"OVERDUE ({abs(days)}d ago)"
+        elif days == 0:
+            deadline_str = "due TODAY"
+        else:
+            deadline_str = f"due in {days}d"
     else:
         deadline_str = "no deadline"
 

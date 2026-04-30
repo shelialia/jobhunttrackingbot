@@ -14,8 +14,8 @@ async def list_cycles(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     lines = ["*Your cycles:*\n"]
     for c in all_cycles:
         status_tag = "active" if c["status"] == "active" else "closed"
-        started = c["started_at"][:10] if c["started_at"] else "?"
-        ended = c["ended_at"][:10] if c["ended_at"] else "ongoing"
+        started = c["started_at"].strftime("%Y-%m-%d") if c["started_at"] else "?"
+        ended = c["ended_at"].strftime("%Y-%m-%d") if c["ended_at"] else "ongoing"
         lines.append(f"• *{c['label']}* [{status_tag}]\n  {started} → {ended}")
 
     await update.message.reply_text("\n\n".join(lines), parse_mode="Markdown")

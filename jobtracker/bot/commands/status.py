@@ -4,19 +4,16 @@ from telegram.ext import ContextTypes
 from ..db import tasks
 
 
-def _deadline_label(deadline_str: str | None) -> str:
-    if not deadline_str:
+def _deadline_label(deadline) -> str:
+    if not deadline:
         return "no deadline"
-    try:
-        dt = datetime.fromisoformat(deadline_str)
-        days = (dt - datetime.utcnow()).days
-        if days < 0:
-            return f"OVERDUE ({abs(days)}d ago)"
-        if days == 0:
-            return "due TODAY"
-        return f"due in {days}d"
-    except ValueError:
-        return deadline_str
+    dt = deadline if isinstance(deadline, datetime) else datetime.fromisoformat(deadline)
+    days = (dt - datetime.utcnow()).days
+    if days < 0:
+        return f"OVERDUE ({abs(days)}d ago)"
+    if days == 0:
+        return "due TODAY"
+    return f"due in {days}d"
 
 
 def _type_emoji(task_type: str) -> str:

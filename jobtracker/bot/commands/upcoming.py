@@ -14,7 +14,7 @@ async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lines = ["*Due in the next 7 days:*\n"]
     for row in rows:
-        dt = datetime.fromisoformat(row["deadline"])
+        dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
         days = (dt - datetime.utcnow()).days
         tag = "TODAY" if days == 0 else f"in {days}d"
         lines.append(
