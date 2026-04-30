@@ -40,13 +40,6 @@ def update_last_scanned(telegram_id: int) -> None:
         )
 
 
-def set_active_cycle(telegram_id: int, cycle_id: int) -> None:
-    with get_connection() as conn:
-        conn.execute(
-            "UPDATE users SET active_cycle_id = ? WHERE telegram_id = ?",
-            (cycle_id, telegram_id),
-        )
-
 
 def get_all_users() -> list[sqlite3.Row]:
     with get_connection() as conn:
