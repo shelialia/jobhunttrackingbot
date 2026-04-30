@@ -16,36 +16,36 @@ def _normalise(text: str) -> str:
     return text
 
 
-def find_or_create_application(telegram_id: int, cycle_id: int, company: str, role: str) -> int:
+def find_application_for_linking(telegram_id: int, company: str, role: str) -> Optional[int]:
+    """Return the most recent real application for this company with the best fuzzy role match, or None."""
+    from rapidfuzz import fuzz
     company_n = _normalise(company)
     role_n = _normalise(role)
     cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
 
     with get_connection() as conn:
-        row = conn.execute(
-            """SELECT id FROM tasks
-               WHERE telegram_id = ? AND cycle_id = ? AND type = 'application'
-               AND company_normalised = ? AND role_normalised = ?
-               AND created_at >= ?
-               ORDER BY created_at ASC LIMIT 1""",
-            (telegram_id, cycle_id, company_n, role_n, cutoff),
-        ).fetchone()
+        candidates = conn.execute(
+            """SELECT id, role_normalised FROM tasks
+               WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
+               AND company_normalised = ? AND created_at >= ?
+               ORDER BY created_at DESC""",
+            (telegram_id, company_n, cutoff),
+        ).fetchall()
 
-        if row:
-            return row["id"]
+    if not candidates:
+        return None
 
-        cursor = conn.execute(
-            """INSERT INTO tasks
-               (telegram_id, cycle_id, type, company, company_normalised, role, role_normalised, status, is_ghost)
-               VALUES (?, ?, 'application', ?, ?, ?, ?, 'incomplete', 1)""",
-            (telegram_id, cycle_id, company, company_n, role, role_n),
-        )
-        return cursor.lastrowid
+    best_id, best_score = None, 0
+    for row in candidates:
+        score = fuzz.partial_ratio(role_n, row["role_normalised"] or "")
+        if score > best_score:
+            best_score, best_id = score, row["id"]
+
+    return best_id if best_score >= 80 else None
 
 
 def insert_task(
     telegram_id: int,
-    cycle_id: int,
     gmail_id: Optional[str],
     task_type: str,
     company: str,
@@ -54,6 +54,7 @@ def insert_task(
     link: Optional[str],
     source_application_id: Optional[int] = None,
     is_ghost: int = 0,
+    email_date: Optional[str] = None,
 ) -> Optional[int]:
     company_n = _normalise(company)
     role_n = _normalise(role)
@@ -62,17 +63,50 @@ def insert_task(
         try:
             cursor = conn.execute(
                 """INSERT INTO tasks
-                   (telegram_id, cycle_id, source_application_id, gmail_id, type,
+                   (telegram_id, source_application_id, gmail_id, type,
                     company, company_normalised, role, role_normalised,
-                    deadline, link, status, is_ghost)
+                    deadline, link, email_date, status, is_ghost)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'incomplete', ?)""",
-                (telegram_id, cycle_id, source_application_id, gmail_id,
+                (telegram_id, source_application_id, gmail_id,
                  task_type, company, company_n, role, role_n,
-                 deadline, link, is_ghost),
+                 deadline, link, email_date, is_ghost),
             )
             return cursor.lastrowid
         except sqlite3.IntegrityError:
             return None
+
+
+def get_task_by_id(task_id: int) -> Optional[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+
+
+def get_assessment_tasks(telegram_id: int) -> list[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT * FROM tasks
+               WHERE telegram_id = ? AND status = 'incomplete' AND is_ghost = 0
+               AND type IN ('oa', 'hirevue', 'interview')
+               ORDER BY
+                 CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
+                 deadline ASC,
+                 CASE type
+                   WHEN 'interview' THEN 0
+                   WHEN 'hirevue'   THEN 1
+                   WHEN 'oa'        THEN 2
+                 END ASC""",
+            (telegram_id,),
+        ).fetchall()
+
+
+def get_applications(telegram_id: int) -> list[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT * FROM tasks
+               WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
+               ORDER BY created_at DESC""",
+            (telegram_id,),
+        ).fetchall()
 
 
 def get_incomplete_tasks(telegram_id: int) -> list[sqlite3.Row]:
@@ -105,19 +139,6 @@ def get_upcoming_tasks(telegram_id: int) -> list[sqlite3.Row]:
         ).fetchall()
 
 
-def get_tasks_due_soon(telegram_id: int) -> list[sqlite3.Row]:
-    now = datetime.utcnow().isoformat()
-    cutoff = (datetime.utcnow() + timedelta(hours=24)).isoformat()
-    with get_connection() as conn:
-        return conn.execute(
-            """SELECT * FROM tasks
-               WHERE telegram_id = ? AND status = 'incomplete'
-               AND deadline BETWEEN ? AND ?
-               AND nudged_at IS NULL""",
-            (telegram_id, now, cutoff),
-        ).fetchall()
-
-
 def get_all_incomplete_tasks_for_all_users() -> list[sqlite3.Row]:
     with get_connection() as conn:
         return conn.execute(
@@ -127,32 +148,15 @@ def get_all_incomplete_tasks_for_all_users() -> list[sqlite3.Row]:
         ).fetchall()
 
 
-def get_all_tasks_due_soon() -> list[sqlite3.Row]:
-    now = datetime.utcnow().isoformat()
-    cutoff = (datetime.utcnow() + timedelta(hours=24)).isoformat()
-    with get_connection() as conn:
-        return conn.execute(
-            """SELECT * FROM tasks
-               WHERE status = 'incomplete'
-               AND deadline BETWEEN ? AND ?
-               AND nudged_at IS NULL""",
-            (now, cutoff),
-        ).fetchall()
-
-
 def mark_done(task_id: int) -> None:
-    with get_connection() as conn:
-        conn.execute(
-            "UPDATE tasks SET status = 'done', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (task_id,),
-        )
+    mark_status(task_id, "done")
 
 
-def mark_nudged(task_id: int) -> None:
+def mark_status(task_id: int, status: str) -> None:
     with get_connection() as conn:
         conn.execute(
-            "UPDATE tasks SET nudged_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (task_id,),
+            "UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (status, task_id),
         )
 
 
@@ -175,7 +179,6 @@ def delete_task(task_id: int) -> None:
 
 def insert_manual_task(
     telegram_id: int,
-    cycle_id: int,
     company: str,
     role: str,
     task_type: str,
@@ -186,8 +189,60 @@ def insert_manual_task(
     with get_connection() as conn:
         cursor = conn.execute(
             """INSERT INTO tasks
-               (telegram_id, cycle_id, type, company, company_normalised, role, role_normalised, deadline, status, is_ghost)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'incomplete', 0)""",
-            (telegram_id, cycle_id, task_type, company, company_n, role, role_n, deadline),
+               (telegram_id, type, company, company_normalised, role, role_normalised, deadline, status, is_ghost)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'incomplete', 0)""",
+            (telegram_id, task_type, company, company_n, role, role_n, deadline),
         )
         return cursor.lastrowid
+
+
+def get_user_stats(telegram_id: int) -> dict:
+    with get_connection() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0",
+            (telegram_id,),
+        ).fetchone()[0]
+
+        responded = conn.execute(
+            """SELECT COUNT(DISTINCT source_application_id) FROM tasks
+               WHERE telegram_id = ? AND type IN ('oa', 'hirevue', 'interview')
+               AND source_application_id IS NOT NULL""",
+            (telegram_id,),
+        ).fetchone()[0]
+
+        offers = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0 AND status = 'offer'",
+            (telegram_id,),
+        ).fetchone()[0]
+
+        this_week = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
+               AND created_at >= datetime('now', '-7 days')""",
+            (telegram_id,),
+        ).fetchone()[0]
+
+        this_month = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
+               AND created_at >= datetime('now', '-30 days')""",
+            (telegram_id,),
+        ).fetchone()[0]
+
+        pending = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE telegram_id = ? AND status = 'incomplete' AND is_ghost = 0
+               AND type IN ('oa', 'hirevue', 'interview')""",
+            (telegram_id,),
+        ).fetchone()[0]
+
+        return {
+            "total": total,
+            "responded": responded,
+            "response_rate": round(responded / total * 100) if total else 0,
+            "offers": offers,
+            "offer_rate": round(offers / total * 100) if total else 0,
+            "this_week": this_week,
+            "this_month": this_month,
+            "pending": pending,
+        }
