@@ -86,7 +86,12 @@ async def sankey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
     )
     fig.update_layout(
-        title=f"Job Search Funnel - {cycle['name']}",
+        title=dict(
+            text=f"<b>Job Search Funnel - {cycle['name']}</b>",
+            x=0.5,
+            xanchor="center",
+            font=dict(size=28, color="#111827"),
+        ),
         font_size=12,
         width=1400,
         height=900,
@@ -103,7 +108,8 @@ async def sankey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await context.bot.send_photo(
                 chat_id=update.effective_chat.id,
                 photo=handle,
-                caption=f"📊 Job Search Funnel - {cycle['name']}",
+                caption=f"📊 <b>Job Search Funnel - {cycle['name']}</b>",
+                parse_mode="HTML",
             )
     finally:
         if not temp_file.closed:
