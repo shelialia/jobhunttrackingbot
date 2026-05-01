@@ -10,9 +10,9 @@ Bring your own API keys and run your own instance.
 
 - Detects OAs, HireVue invites, interview invites, and application confirmations from Gmail
 - Classifies emails using Gemini Flash 2.0 (free tier, 1500 req/day)
-- Daily digest at 09:00 SGT and 24-hour deadline nudges
+- Daily digest at 09:00 SGT (deadline nudges exist in `scheduler/nudge.py` but are not yet wired up)
 - `/scan` to manually trigger an inbox poll
-- `/tasks`, `/status`, `/upcoming`, `/stats` to view your pipeline
+- `/tasks`, `/applied`, `/upcoming`, `/stats` to view your pipeline
 - `/done`, `/add`, `/remove` to manage tasks
 - Deduplication by Gmail message ID — safe to scan repeatedly
 - Privacy notice + explicit `/confirm` before any Gmail access
@@ -170,8 +170,8 @@ jobtracker/
 1. Fetch emails from Gmail since `last_scanned_at` filtered by job-related subject keywords
 2. Skip any email whose `gmail_id` is already in the database (dedup)
 3. Send subject + body to Gemini — get back structured JSON (type, company, role, deadline, link)
-4. Skip emails classified as `irrelevant` or with confidence < 0.7 (flagged for manual review)
-5. Insert task row; for OA/HireVue/interview, link back to the original application row
+4. Skip emails classified as `irrelevant`; emails with confidence < 0.7 are still inserted but flagged with a warning in the scan reply
+5. Insert task row; for OA/HireVue/interview, fuzzy-match against existing application rows by company (exact) + role (rapidfuzz partial\_ratio ≥ 80) to set `source_application_id`
 6. Update `last_scanned_at`
 
 ---
@@ -183,7 +183,7 @@ Contributions are welcome. A few things to know before you start:
 - The project uses Python 3.11+. Keep it async — `python-telegram-bot` v20 runs on a single asyncio event loop.
 - The LLM call in `llm/classify.py` is currently synchronous and blocks the event loop. This is a known issue — if you're fixing multi-user concurrency, the right fix is `generate_content_async()` with a global `asyncio.Semaphore`.
 - Deduplication is enforced at the database level via a unique index on `(telegram_id, gmail_id)`. Do not remove or work around this.
-- `normalise()` in `db/tasks.py` is used for company/role matching — changes there affect dedup and linking logic.
+- `_normalise()` in `db/tasks.py` is used for company/role matching — changes there affect dedup and linking logic. Company matching is exact on the normalised string; role matching uses `rapidfuzz.fuzz.partial_ratio` with a threshold of 80.
 - There is a hardcoded `last_scanned = datetime(2026, 4, 20)` in `commands/scan.py` left in for testing. Remove this before any production deployment.
 
 To contribute:
@@ -197,8 +197,9 @@ To contribute:
 ## Known limitations
 
 - LLM calls are synchronous — blocks the event loop under concurrent load (single-user use is fine)
-- No per-user notification timezone (hardcoded 09:00 SGT / 01:00 UTC)
-- No fuzzy company/role matching — exact normalised match only
+- No per-user notification timezone (digest hardcoded to 01:00 UTC / 09:00 SGT)
+- Deadline nudges (`scheduler/nudge.py`) are not yet registered in the scheduler — the required DB functions (`get_all_tasks_due_soon`, `mark_nudged`) are also missing from `db/tasks.py`
+- No per-user fuzzy company matching — company lookup is exact on the normalised string; only role matching is fuzzy
 - Gmail scope is read-only but all matching emails are sent to Gemini; unrelated emails may occasionally be processed
 - Single Gemini API key shared across all users of an instance
 
