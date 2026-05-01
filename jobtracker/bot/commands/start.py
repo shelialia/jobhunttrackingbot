@@ -21,6 +21,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     context.user_data["awaiting_privacy_confirm"] = True
     await update.message.reply_text(
+        "👋 *Welcome to Job Hunt Tracker!*\n\n"
+        "I monitor your Gmail inbox for job application tasks — "
+        "OAs, HireVues, interviews — and help you stay on top of deadlines.\n\n"
         "⚠️ *Privacy Notice*\n\n"
         "This bot reads your Gmail to track job applications automatically. "
         "To do this, relevant emails are processed by an AI model (currently Google Gemini).\n\n"
