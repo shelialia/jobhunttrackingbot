@@ -8,7 +8,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if users.get_user(telegram_id):
         await update.message.reply_text(
-            "👋 *Welcome back to Job Hunt Tracker!*\n\n"
+            "🔥 *Welcome back to Job Hunt Tracker!* 🔥\n\n"
+            "Let's get back to it — your dream job isn't going to land itself! 💪\n\n"
             "I monitor your Gmail inbox for job application tasks — "
             "OAs, HireVues, interviews — and help you stay on top of deadlines.\n\n"
             "🔗 Connect or reconnect your Gmail: /connect\n"
@@ -21,7 +22,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     context.user_data["awaiting_privacy_confirm"] = True
     await update.message.reply_text(
-        "👋 *Welcome to Job Hunt Tracker!*\n\n"
+        "🔥 *Welcome to Job Hunt Tracker!* 🚀\n\n"
+        "Your job hunt just got a whole lot easier! 🎯\n\n"
         "I monitor your Gmail inbox for job application tasks — "
         "OAs, HireVues, interviews — and help you stay on top of deadlines.\n\n"
         "⚠️ *Privacy Notice*\n\n"
