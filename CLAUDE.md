@@ -35,14 +35,16 @@ jobtracker/
 │   ├── commands/
 │   │   ├── start.py         # /start onboarding
 │   │   ├── connect.py       # /connect Gmail OAuth flow
-│   │   ├── status.py        # /status pending tasks
+│   │   ├── tasks.py         # /tasks pending assessments + interviews
+│   │   ├── applied.py       # /applied all applications
 │   │   ├── upcoming.py      # /upcoming next 7 days
-│   │   ├── stats.py         # /stats cycle statistics
+│   │   ├── stats.py         # /stats job hunt statistics
 │   │   ├── scan.py          # /scan manual Gmail poll
 │   │   ├── done.py          # /done [company]
+│   │   ├── offer.py         # /offer [company]
+│   │   ├── reject.py        # /reject [company]
 │   │   ├── add.py           # /add [company] [deadline]
 │   │   ├── remove.py        # /remove [company]
-│   │   ├── cycles.py        # /cycles, /newcycle
 │   │   └── help.py          # /help
 │   ├── scheduler/
 │   │   ├── digest.py        # daily 9AM UTC digest job
@@ -56,8 +58,7 @@ jobtracker/
 │   └── db/
 │       ├── schema.py        # CREATE TABLE statements + migrations
 │       ├── users.py         # user CRUD
-│       ├── tasks.py         # task CRUD + dedup + linking logic
-│       └── cycles.py        # cycle CRUD
+│       └── tasks.py         # task CRUD + dedup + linking logic
 ├── oauth_server/
 │   └── app.py               # Flask callback — receives OAuth code from Google
 ├── data/
@@ -80,25 +81,13 @@ jobtracker/
 | email | TEXT | user's Gmail address |
 | gmail_token_json | TEXT | serialised OAuth2 token blob |
 | last_scanned_at | TIMESTAMP | updated after every scan |
-| active_cycle_id | INTEGER FK | references cycles.id |
 | created_at | TIMESTAMP | |
-
-### cycles
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER PK | |
-| telegram_id | INTEGER FK | references users.telegram_id |
-| label | TEXT | e.g. "Summer 2025" |
-| started_at | TIMESTAMP | |
-| ended_at | TIMESTAMP | NULL while active |
-| status | TEXT | active \| closed |
 
 ### tasks
 | Column | Type | Notes |
 |---|---|---|
 | id | INTEGER PK | |
 | telegram_id | INTEGER FK | |
-| cycle_id | INTEGER FK | references cycles.id |
 | source_application_id | INTEGER FK | self-ref — links OA/HireVue/interview back to its application row |
 | gmail_id | TEXT | raw Gmail message ID — dedup key (nullable for ghosts) |
 | type | TEXT | application \| oa \| hirevue \| interview |
@@ -141,8 +130,8 @@ CREATE INDEX idx_tasks_deadline
 
 ### Deduplication — two separate problems
 - **Same email processed twice:** blocked by unique index on `(telegram_id, gmail_id)`
-- **Linking related emails:** `find_or_create_application()` looks up an existing `application`
-  row matching `company_normalised + role_normalised` within 90 days and the current cycle.
+- **Linking related emails:** `find_application_for_linking()` looks up an existing `application`
+  row matching `company_normalised` (exact) + `role_normalised` (rapidfuzz partial_ratio ≥ 80) within 90 days.
   If not found, inserts a ghost application row (`is_ghost = 1`) as an anchor.
 
 ### normalise(text)
@@ -178,11 +167,10 @@ Primary: `days_remaining ASC` (overdue tasks are negative — float to top natur
 Secondary: type priority — `interview (0) > hirevue (1) > oa (2)` as tiebreaker.
 
 ### Stats computation
-- `total_applied` — `type = 'application' AND is_ghost = 0` in current cycle
+- `total_applied` — `type = 'application' AND is_ghost = 0`
 - `response_rate` — distinct `source_application_id` values across non-application tasks / total_applied
-- `avg_response_time` — AVG of `julianday(task.created_at) - julianday(application.created_at)`
-- `apps_per_week` — total_applied / weeks since cycle started_at
-- "completed this week" — `status = 'done' AND updated_at >= 7 days ago`
+- `this_week` / `this_month` — applications created within last 7 / 30 days
+- `pending` — incomplete OA/HireVue/interview tasks
 
 ---
 
@@ -190,18 +178,18 @@ Secondary: type priority — `interview (0) > hirevue (1) > oa (2)` as tiebreake
 
 | Command | Description |
 |---|---|
-| `/start` | Onboard user, store telegram_id, create first cycle, prompt /connect |
+| `/start` | Onboard user, show privacy notice, prompt /connect |
 | `/connect` | Generate Gmail OAuth2 URL, send to user |
-| `/status` | All incomplete tasks sorted by urgency, colour-coded by days remaining |
-| `/upcoming` | Tasks due in the next 7 days only |
-| `/stats` | Current cycle stats — applied, response rate, pending, avg response time |
-| `/stats [label]` | Stats for a named past cycle |
+| `/tasks` | Pending assessments and interviews sorted by urgency |
+| `/applied` | All submitted applications |
+| `/upcoming` | Tasks due in the next 7 days |
+| `/stats` | Job hunt stats — applied, response rate, pending |
 | `/scan` | Trigger immediate Gmail poll, reply with newly found tasks |
 | `/done [company]` | Mark matching incomplete task as done |
+| `/offer [company]` | Mark an application as an offer |
+| `/reject [company]` | Mark an application as rejected |
 | `/add [company] [deadline]` | Manually insert a task the bot missed |
 | `/remove [company]` | Delete a wrongly detected task |
-| `/cycles` | List all cycles with summary stats |
-| `/newcycle` | Close active cycle, prompt for new label, open new cycle |
 | `/help` | List all commands |
 
 ---
@@ -258,7 +246,6 @@ with no preamble or markdown fences. Expected output shape:
 
 - Per-user notification time (hardcoded 01:00 UTC for now)
 - Timezone support
-- Fuzzy company/role matching (rapidfuzz) — exact normalised match only
-- Offer / rejection / ghosted tracking
+- Deadline nudges — `scheduler/nudge.py` exists but is not registered in the scheduler; `get_all_tasks_due_soon()` and `mark_nudged()` are missing from `db/tasks.py`
 - Multi-email provider support (Outlook etc.)
 - Web dashboard
