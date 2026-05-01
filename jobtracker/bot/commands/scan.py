@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from html import escape
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from google.api_core import exceptions as google_exceptions
 from telegram import Bot, Update
 from telegram.ext import ContextTypes
@@ -12,6 +12,7 @@ from ..llm.classify import classify_email
 
 logger = logging.getLogger(__name__)
 _CLASSIFY_RETRY_DELAYS = (2, 5, 10)
+_SGT = timezone(timedelta(hours=8))
 
 def _format_date(email_date: str | None) -> str:
     if not email_date:
@@ -45,6 +46,29 @@ def _message_sort_key(message: dict) -> tuple[int, str]:
     return (0, email_date)
 
 
+def _to_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _format_scan_datetime(dt: datetime) -> str:
+    return dt.astimezone(_SGT).strftime("%d %b %I:%M %p").lstrip("0")
+
+
+def _calculate_scan_start(user: dict, now_utc: datetime) -> tuple[datetime, bool]:
+    last_scan = _to_utc(user.get("last_scanned_at"))
+    capped_start = now_utc - timedelta(hours=24)
+    if last_scan is None:
+        return capped_start, False
+    if last_scan >= capped_start:
+        last_manual = _to_utc(user.get("last_manual_scanned_at"))
+        return last_scan, last_manual is not None and last_manual == last_scan
+    return capped_start, False
+
+
 async def _classify_with_retry(subject: str, body: str, email_date: str | None = None) -> dict:
     attempts = len(_CLASSIFY_RETRY_DELAYS) + 1
 
@@ -72,7 +96,16 @@ async def _classify_with_retry(subject: str, body: str, email_date: str | None =
             await asyncio.sleep(delay)
 
 
-async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
+async def _run_scan(
+    bot: Bot,
+    telegram_id: int,
+    user: dict,
+    *,
+    scan_start: datetime,
+    scan_started_at: datetime,
+    scan_mode: str,
+    window_from_last_manual_scan: bool,
+) -> None:
     cycle = cycles_db.get_active_cycle(telegram_id)
     if not cycle:
         await bot.send_message(
@@ -81,11 +114,14 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
         )
         return
     cycle_id = cycle["id"]
+    formatted_since = _format_scan_datetime(scan_start)
 
-    # TEMP: hardcoded for testing — remove before deploy
-    last_scanned = datetime(2026, 4, 20)
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=f"🔍 Scanning emails since {formatted_since}...",
+    )
 
-    messages = fetch_new_messages(user["gmail_token_json"], last_scanned)
+    messages = fetch_new_messages(user["gmail_token_json"], scan_start)
     messages.sort(key=_message_sort_key)
     # each entry: (company, task_type, role, email_date, low_conf)
     items: list[tuple[str, str, str, str | None, bool]] = []
@@ -195,14 +231,25 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
 
         items.append((company, task_type, role, email_date, confidence < 0.7))
 
-    users.update_last_scanned(telegram_id)
+    users.update_last_scanned(
+        telegram_id,
+        scan_started_at,
+        is_manual=(scan_mode == "manual"),
+    )
 
     applications = [i for i in items if i[1] == "application"]
     tasks = [i for i in items if i[1] in ("oa", "hirevue", "interview")]
     rejections = [i for i in items if i[1] == "rejection"]
     offers = [i for i in items if i[1] == "offer"]
 
-    lines = ["✅ <b>Scan complete!</b>", ""]
+    since_text = escape(_format_scan_datetime(scan_start))
+    if scan_mode == "manual":
+        header = f"✅ Scan complete! (since {since_text})"
+    else:
+        suffix = " — last manual scan" if window_from_last_manual_scan else ""
+        header = f"🤖 Daily auto-scan complete! (since {since_text}{escape(suffix)})"
+
+    lines = [header, ""]
     for group_label, group in (
         ("📝 Applications Submitted", applications),
         ("🎯 Pending Tasks", tasks),
@@ -229,6 +276,27 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
     await bot.send_message(chat_id=telegram_id, text=text, parse_mode=parse_mode)
 
 
+async def run_daily_auto_scan(bot: Bot) -> None:
+    now_utc = datetime.now(timezone.utc)
+
+    for user in users.get_all_users():
+        if not user["gmail_token_json"]:
+            continue
+
+        telegram_id = user["telegram_id"]
+        user_dict = dict(user)
+        scan_start, from_last_manual_scan = _calculate_scan_start(user_dict, now_utc)
+        await _run_scan(
+            bot,
+            telegram_id,
+            user_dict,
+            scan_start=scan_start,
+            scan_started_at=now_utc,
+            scan_mode="auto",
+            window_from_last_manual_scan=from_last_manual_scan,
+        )
+
+
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
     user = users.get_user(telegram_id)
@@ -241,8 +309,16 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Gmail not connected. Use /connect first.")
         return
 
-    await update.message.reply_text(
-        "⏳ *Scanning your inbox...*\n\nThis may take a few minutes — I'll send you a notification when done!",
-        parse_mode="Markdown",
+    now_utc = datetime.now(timezone.utc)
+    scan_start, from_last_manual_scan = _calculate_scan_start(dict(user), now_utc)
+    asyncio.create_task(
+        _run_scan(
+            context.bot,
+            telegram_id,
+            dict(user),
+            scan_start=scan_start,
+            scan_started_at=now_utc,
+            scan_mode="manual",
+            window_from_last_manual_scan=from_last_manual_scan,
+        )
     )
-    asyncio.create_task(_run_scan(context.bot, telegram_id, dict(user)))

@@ -51,6 +51,7 @@ def init_db() -> None:
                 email TEXT,
                 gmail_token_json TEXT,
                 last_scanned_at TIMESTAMP,
+                last_manual_scanned_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -98,3 +99,6 @@ def init_db() -> None:
         if "cycle_id" not in cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN cycle_id INTEGER REFERENCES cycles(id)")
         conn.execute("UPDATE tasks SET status = 'rejected' WHERE status = 'reject'")
+        user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        if "last_manual_scanned_at" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN last_manual_scanned_at TIMESTAMP")

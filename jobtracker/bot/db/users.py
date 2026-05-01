@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime
 from typing import Optional
 from .schema import get_connection
 
@@ -32,12 +33,21 @@ def update_gmail_token(telegram_id: int, token_json: str) -> None:
         )
 
 
-def update_last_scanned(telegram_id: int) -> None:
+def update_last_scanned(telegram_id: int, scanned_at: datetime, is_manual: bool = False) -> None:
+    scanned_at_text = scanned_at.strftime("%Y-%m-%d %H:%M:%S")
     with get_connection() as conn:
-        conn.execute(
-            "UPDATE users SET last_scanned_at = CURRENT_TIMESTAMP WHERE telegram_id = ?",
-            (telegram_id,),
-        )
+        if is_manual:
+            conn.execute(
+                """UPDATE users
+                   SET last_scanned_at = ?, last_manual_scanned_at = ?
+                   WHERE telegram_id = ?""",
+                (scanned_at_text, scanned_at_text, telegram_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET last_scanned_at = ? WHERE telegram_id = ?",
+                (scanned_at_text, telegram_id),
+            )
 
 
 
