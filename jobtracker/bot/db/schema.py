@@ -53,7 +53,6 @@ def init_db() -> None:
                 email_date TIMESTAMP,
                 status TEXT NOT NULL DEFAULT 'incomplete',
                 is_ghost INTEGER NOT NULL DEFAULT 0,
-                nudged_at TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -72,3 +71,4 @@ def init_db() -> None:
             conn.execute("ALTER TABLE tasks ADD COLUMN email_date TIMESTAMP")
         if "cycle_id" not in cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN cycle_id INTEGER REFERENCES cycles(id)")
+        conn.execute("UPDATE tasks SET status = 'rejected' WHERE status = 'reject'")

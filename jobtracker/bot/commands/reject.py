@@ -25,7 +25,7 @@ async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     company = task["company"] or "Unknown"
     role_str = f" ({task['role']})" if task["role"] else ""
     display = f"{company}{role_str}"
-    context.user_data["pending_action"] = {"action": "reject", "task_id": task["id"], "display": display}
+    context.user_data["pending_action"] = {"action": "rejected", "task_id": task["id"], "display": display}
 
     await update.message.reply_text(
         f"❌ Mark *{company}*{role_str} as *rejected*?\n\nSend /confirm to proceed.",

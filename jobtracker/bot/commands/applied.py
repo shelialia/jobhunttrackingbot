@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks
 
-_STATUS_EMOJI = {"done": "✅", "offer": "🎉", "reject": "❌"}
+_STATUS_EMOJI = {"done": "✅", "offer": "🎉", "reject": "❌", "rejected": "❌"}
 
 
 async def applied(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

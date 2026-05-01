@@ -53,6 +53,64 @@ def find_application_for_linking(telegram_id: int, company: str, role: str, cycl
     return best_id if best_score >= 80 else None
 
 
+def find_or_create_application_for_linking(
+    telegram_id: int,
+    company: str,
+    role: str,
+    cycle_id: Optional[int] = None,
+    email_date: Optional[str] = None,
+    is_ghost_if_missing: int = 1,
+) -> Optional[int]:
+    app_id = find_application_for_linking(telegram_id, company, role, cycle_id=cycle_id)
+    if app_id is not None:
+        return app_id
+
+    from rapidfuzz import fuzz
+    company_n = _normalise(company)
+    role_n = _normalise(role)
+    cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
+
+    with get_connection() as conn:
+        if cycle_id is not None:
+            candidates = conn.execute(
+                """SELECT id, role_normalised FROM tasks
+                   WHERE telegram_id = ? AND type = 'application' AND is_ghost = 1
+                   AND company_normalised = ? AND created_at >= ? AND cycle_id = ?
+                   ORDER BY created_at DESC""",
+                (telegram_id, company_n, cutoff, cycle_id),
+            ).fetchall()
+        else:
+            candidates = conn.execute(
+                """SELECT id, role_normalised FROM tasks
+                   WHERE telegram_id = ? AND type = 'application' AND is_ghost = 1
+                   AND company_normalised = ? AND created_at >= ?
+                   ORDER BY created_at DESC""",
+                (telegram_id, company_n, cutoff),
+            ).fetchall()
+
+    best_id, best_score = None, 0
+    for row in candidates:
+        score = fuzz.partial_ratio(role_n, row["role_normalised"] or "")
+        if score > best_score:
+            best_score, best_id = score, row["id"]
+
+    if best_id is not None and best_score >= 80:
+        return best_id
+
+    return insert_task(
+        telegram_id=telegram_id,
+        gmail_id=None,
+        task_type="application",
+        company=company,
+        role=role,
+        deadline=None,
+        link=None,
+        is_ghost=is_ghost_if_missing,
+        email_date=email_date,
+        cycle_id=cycle_id,
+    )
+
+
 def insert_task(
     telegram_id: int,
     gmail_id: Optional[str],
@@ -65,6 +123,7 @@ def insert_task(
     is_ghost: int = 0,
     email_date: Optional[str] = None,
     cycle_id: Optional[int] = None,
+    status: str = "incomplete",
 ) -> Optional[int]:
     company_n = _normalise(company)
     role_n = _normalise(role)
@@ -76,10 +135,10 @@ def insert_task(
                    (telegram_id, cycle_id, source_application_id, gmail_id, type,
                     company, company_normalised, role, role_normalised,
                     deadline, link, email_date, status, is_ghost)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'incomplete', ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (telegram_id, cycle_id, source_application_id, gmail_id,
                  task_type, company, company_n, role, role_n,
-                 deadline, link, email_date, is_ghost),
+                 deadline, link, email_date, status, is_ghost),
             )
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -167,6 +226,16 @@ def mark_status(task_id: int, status: str) -> None:
         conn.execute(
             "UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (status, task_id),
+        )
+
+
+def promote_ghost_application(task_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """UPDATE tasks
+               SET is_ghost = 0, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND type = 'application' AND is_ghost = 1""",
+            (task_id,),
         )
 
 

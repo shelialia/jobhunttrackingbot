@@ -6,7 +6,7 @@ Before you start building, create a new repository on Github and make frequent g
 
 A Telegram bot that monitors a user's Gmail inbox for job application to-dos (OAs,
 HireVues, Codility, HackerRank, interview invites), stores them in SQLite, and sends
-a daily digest + urgent deadline nudges via Telegram.
+a daily digest via Telegram.
 
 ---
 
@@ -53,8 +53,7 @@ jobtracker/
 │   │   ├── text_input.py    # MessageHandler for cycle name input
 │   │   └── help.py          # /help
 │   ├── scheduler/
-│   │   ├── digest.py        # daily 9AM UTC digest job
-│   │   └── nudge.py         # hourly 24h deadline nudge job
+│   │   └── digest.py        # daily 9AM UTC digest job
 │   ├── gmail/
 │   │   ├── auth.py          # OAuth2 URL generation + token refresh
 │   │   ├── fetch.py         # Gmail API fetch since last_scanned_at
@@ -108,16 +107,15 @@ jobtracker/
 | cycle_id | INTEGER FK | references cycles.id — nullable for legacy rows |
 | source_application_id | INTEGER FK | self-ref — links OA/HireVue/interview back to its application row |
 | gmail_id | TEXT | raw Gmail message ID — dedup key (nullable for ghosts) |
-| type | TEXT | application \| oa \| hirevue \| interview |
+| type | TEXT | application \| oa \| hirevue \| interview \| offer \| rejection |
 | company | TEXT | raw, as extracted by LLM — for display |
 | company_normalised | TEXT | output of normalise(company) — for matching |
 | role | TEXT | raw |
 | role_normalised | TEXT | output of normalise(role) — for matching |
 | deadline | TIMESTAMP | |
 | link | TEXT | direct assessment/interview URL if found |
-| status | TEXT | incomplete \| done |
+| status | TEXT | incomplete \| done \| offer \| rejected |
 | is_ghost | INTEGER | 1 = inferred application with no confirmation email |
-| nudged_at | TIMESTAMP | set when 24h nudge fires — prevents repeat nudges |
 | updated_at | TIMESTAMP | used to compute "completed this week" |
 | created_at | TIMESTAMP | |
 
@@ -138,17 +136,18 @@ CREATE INDEX idx_tasks_deadline
 ## Core logic
 
 ### Email scan pipeline (shared by /scan and background poller)
-1. Fetch emails from Gmail API since `last_scanned_at` using `after:{unix_timestamp}`
+1. Fetch emails from Gmail API using the current local testing window
 2. For each message: check `gmail_id` against tasks table — skip if already processed
 3. Extract subject + body from raw Gmail message payload
 4. Send subject + body to Gemini — get back structured JSON (type, company, role, deadline, link)
 5. If type is `oa | hirevue | interview`: call `find_or_create_application()` to get `source_application_id`
-6. Insert task row with `company_normalised = normalise(company)`, `role_normalised = normalise(role)`
-7. Update `users.last_scanned_at = now()`
+6. If type is `offer | rejection`: create a deduped outcome event row, then update the linked application status
+7. Insert task row with `company_normalised = normalise(company)`, `role_normalised = normalise(role)` where applicable
+8. Update `users.last_scanned_at = now()`
 
 ### Deduplication — two separate problems
 - **Same email processed twice:** blocked by unique index on `(telegram_id, gmail_id)`
-- **Linking related emails:** `find_application_for_linking()` looks up an existing `application`
+- **Linking related emails:** `find_or_create_application_for_linking()` first looks up an existing `application`
   row matching `company_normalised` (exact) + `role_normalised` (rapidfuzz partial_ratio ≥ 80) within 90 days.
   If not found, inserts a ghost application row (`is_ghost = 1`) as an anchor.
 
@@ -175,12 +174,7 @@ def normalise(text: str) -> str:
   Fetches all incomplete tasks for all users, sorted by deadline asc, sends digest message.
   Skips users with no pending tasks.
 
-- **Hourly nudge** — `IntervalTrigger(hours=1)`
-  Finds tasks where `deadline BETWEEN now() AND now() + 24h`
-  AND `status = 'incomplete'` AND `nudged_at IS NULL`.
-  Fires one nudge message per task, sets `nudged_at = now()`.
-
-### Task sort order (for /status and digest)
+### Task sort order (for digest)
 Primary: `days_remaining ASC` (overdue tasks are negative — float to top naturally).
 Secondary: type priority — `interview (0) > hirevue (1) > oa (2)` as tiebreaker.
 
@@ -268,6 +262,6 @@ with no preamble or markdown fences. Expected output shape:
 
 - Per-user notification time (hardcoded 01:00 UTC for now)
 - Timezone support
-- Deadline nudges — `scheduler/nudge.py` exists but is not registered in the scheduler; `get_all_tasks_due_soon()` and `mark_nudged()` are missing from `db/tasks.py`
+- `/scan` is intentionally not incremental right now while local classification testing is in progress
 - Multi-email provider support (Outlook etc.)
 - Web dashboard

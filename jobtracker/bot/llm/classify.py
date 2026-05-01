@@ -12,7 +12,7 @@ _PROMPT_TEMPLATE = """You are a job application email classifier. Analyse the em
 
 Output schema:
 {{
-  "type": "oa | hirevue | interview | application | rejection | irrelevant",
+  "type": "oa | hirevue | interview | application | offer | rejection | irrelevant",
   "company": "<string or null>",
   "role": "<string or null>",
   "deadline": "<ISO8601 datetime or null>",
@@ -30,6 +30,7 @@ Rules:
 - type = "hirevue"      → a one-way video interview invite (HireVue, Spark Hire, Modern Hire, Montage,
                           or any platform asking you to record video answers to pre-set questions)
 - type = "interview"    → a live interview invite (phone / virtual / on-site) sent during the hiring process
+- type = "offer"        → an offer email from the company (verbal or written offer, offer letter, compensation details, next steps to accept)
 - type = "rejection"    → a rejection / regret email from the company (not moving forward, application unsuccessful, position filled, "unfortunately")
 - type = "irrelevant"   → classify as irrelevant if ANY of the following are true:
     * not related to a job application

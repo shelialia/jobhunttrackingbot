@@ -66,9 +66,44 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
 
         source_application_id = None
         if task_type in ("oa", "hirevue", "interview"):
-            source_application_id = tasks_db.find_application_for_linking(
-                telegram_id, company, role, cycle_id=cycle_id
+            source_application_id = tasks_db.find_or_create_application_for_linking(
+                telegram_id, company, role, cycle_id=cycle_id, email_date=email_date
             )
+        elif task_type in ("offer", "rejection"):
+            source_application_id = tasks_db.find_or_create_application_for_linking(
+                telegram_id,
+                company,
+                role,
+                cycle_id=cycle_id,
+                email_date=email_date,
+                is_ghost_if_missing=0,
+            )
+            if source_application_id is None:
+                continue
+
+            task_id = tasks_db.insert_task(
+                telegram_id,
+                gmail_id,
+                task_type,
+                company,
+                role,
+                deadline,
+                link,
+                source_application_id,
+                email_date=email_date,
+                cycle_id=cycle_id,
+                status="done",
+            )
+            if task_id is None:
+                continue
+
+            tasks_db.promote_ghost_application(source_application_id)
+            tasks_db.mark_status(
+                source_application_id,
+                "offer" if task_type == "offer" else "rejected",
+            )
+            items.append((company, task_type, role, email_date, confidence < 0.7))
+            continue
 
         task_id = tasks_db.insert_task(
             telegram_id, gmail_id, task_type,

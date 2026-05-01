@@ -6,7 +6,7 @@ from ..db import users as users_db
 _STATUS_MESSAGES = {
     "done":   ("✅", "marked as *done*"),
     "offer":  ("🎉", "marked as an *offer* — congratulations!"),
-    "reject": ("❌", "marked as *rejected*"),
+    "rejected": ("❌", "marked as *rejected*"),
     "remove": ("🗑️", "removed"),
 }
 
