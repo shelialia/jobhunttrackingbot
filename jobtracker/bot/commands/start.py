@@ -9,6 +9,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if users.get_user(telegram_id):
         await update.message.reply_text(
             "👋 *Welcome back to Job Hunt Tracker!*\n\n"
+            "I monitor your Gmail inbox for job application tasks — "
+            "OAs, HireVues, interviews — and help you stay on top of deadlines.\n\n"
+            "🔗 Connect or reconnect your Gmail: /connect\n"
+            "📋 View pending tasks: /tasks\n"
+            "📊 See your stats: /stats\n\n"
             "Type /help to see all available commands.",
             parse_mode="Markdown",
         )
