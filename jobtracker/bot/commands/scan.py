@@ -237,6 +237,19 @@ async def _run_scan(
             root_application_id = tasks_db.get_root_application_id(root_application_id) or root_application_id
             latest_stage = tasks_db.get_latest_chain_stage(root_application_id)
             chain_parent_id = latest_stage["id"] if latest_stage is not None else root_application_id
+            if email_subtype == "confirmation" and interview_round is None:
+                latest_interview = tasks_db.find_existing_interview(
+                    telegram_id,
+                    cycle_id,
+                    company,
+                    interview_round=None,
+                )
+                if latest_interview is not None:
+                    interview_round = latest_interview["interview_round"]
+                    if not is_final_round and latest_interview["is_final_round"]:
+                        is_final_round = latest_interview["is_final_round"]
+                    if not round_label and latest_interview["round_label"]:
+                        round_label = latest_interview["round_label"]
             interview_round = determine_interview_round(
                 interview_round,
                 is_final_round,
