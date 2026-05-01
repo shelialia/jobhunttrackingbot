@@ -1,4 +1,5 @@
 from datetime import datetime
+from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks
@@ -19,9 +20,9 @@ async def tasks_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lines = ["📋 *Pending Assessments & Interviews*\n"]
     for i, row in enumerate(rows, 1):
-        company = row["company"] or "Unknown"
+        company = escape(row["company"] or "Unknown")
         emoji = _EMOJI.get(row["type"], "📌")
-        type_label = row["type"].upper()
+        type_label = escape(row["type"].upper())
 
         if row["deadline"]:
             dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
@@ -35,8 +36,9 @@ async def tasks_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             day_str = "no deadline"
 
-        role_line = f"\n   _{row['role']}_" if row["role"] else ""
-        lines.append(f"{i}. {emoji} *{company}* — {type_label} [{day_str}]{role_line}")
+        role_line = f"\n   <i>{escape(row['role'])}</i>" if row["role"] else ""
+        lines.append(f"{i}. {emoji} <b>{company}</b> - <code>{type_label}</code> [{escape(day_str)}]{role_line}")
 
-    lines.append("\n_Use /done <task_number> to mark complete_")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    lines[0] = "📋 <b>Pending Assessments & Interviews</b>\n"
+    lines.append("\n<i>Use /done &lt;task_number&gt; to mark complete</i>")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
