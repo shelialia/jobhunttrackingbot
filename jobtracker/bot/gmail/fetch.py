@@ -8,7 +8,7 @@ def fetch_new_messages(token_json: str, last_scanned_at: Optional[datetime]) -> 
     creds = get_credentials(token_json)
     service = build("gmail", "v1", credentials=creds)
 
-    query = "in:inbox category:primary"
+    query = 'subject:(application OR applying OR update OR interview OR offer OR unfortunately OR regret OR "move forward")'
     if last_scanned_at:
         query += f" after:{int(last_scanned_at.timestamp())}"
 

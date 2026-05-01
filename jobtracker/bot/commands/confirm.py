@@ -1,6 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks as tasks_db
+from ..db import users as users_db
 
 _STATUS_MESSAGES = {
     "done":   ("✅", "marked as *done*"),
@@ -11,6 +12,20 @@ _STATUS_MESSAGES = {
 
 
 async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if context.user_data.get("awaiting_privacy_confirm"):
+        context.user_data.pop("awaiting_privacy_confirm")
+        users_db.create_user(update.effective_user.id)
+        await update.message.reply_text(
+            "👋 *Welcome to Job Hunt Tracker!*\n\n"
+            "I monitor your Gmail inbox for job application tasks — "
+            "OAs, HireVues, interviews — and help you stay on top of deadlines.\n\n"
+            "🔗 To get started, connect your Gmail:\n"
+            "/connect\n\n"
+            "Type /help to see all available commands.",
+            parse_mode="Markdown",
+        )
+        return
+
     pending = context.user_data.get("pending_action")
 
     if not pending:
