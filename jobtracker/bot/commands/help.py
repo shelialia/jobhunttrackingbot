@@ -2,27 +2,27 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 HELP_TEXT = """
-🤖 *CronJobBot — Commands*
+🤖 <b>CronJobBot - Commands</b>
 
-📋 *Tracking*
+📋 <b>Tracking</b>
 /tasks — Assessments & interviews to complete
 /applied — All applications submitted
 /stats — Job hunt stats for your active cycle
 /upcoming — Tasks due in the next 7 days
 
-✅ *Actions*
-/done <task_number> — Mark a task as done
-/offer <app_number> — Mark an application as an offer
-/reject <app_number> — Mark an application as rejected
-/remove <task_number or app_number> — Delete a task or application
+✅ <b>Actions</b>
+/done &lt;task_number&gt; — Mark a task as done
+/offer &lt;app_number&gt; — Mark an application as an offer
+/reject &lt;app_number&gt; — Mark an application as rejected
+/remove &lt;task_number or app_number&gt; — Delete a task or application
 /confirm — Confirm a pending action
 
-✏️ *Management*
+✏️ <b>Management</b>
 /scan — Scan Gmail for new tasks
-/add <company> [date] [type] — Add a task manually
+/add &lt;company&gt; [date] [type] — Add a task manually
 /connect — Connect your Gmail account
 
-🔄 *Cycles*
+🔄 <b>Cycles</b>
 /cycles — View all your cycles
 /newcycle — Start a new cycle
 /endcycle — End the current cycle
@@ -33,4 +33,4 @@ HELP_TEXT = """
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
+    await update.message.reply_text(HELP_TEXT, parse_mode="HTML")
