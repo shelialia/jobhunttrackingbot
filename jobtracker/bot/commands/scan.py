@@ -1,12 +1,17 @@
 import asyncio
+import logging
 from html import escape
 from datetime import datetime
+from google.api_core import exceptions as google_exceptions
 from telegram import Bot, Update
 from telegram.ext import ContextTypes
 from ..db import users, tasks as tasks_db, cycles as cycles_db
 from ..gmail.fetch import fetch_new_messages
 from ..gmail.parse import extract_subject_and_body, get_gmail_id, get_email_date
 from ..llm.classify import classify_email
+
+logger = logging.getLogger(__name__)
+_CLASSIFY_RETRY_DELAYS = (2, 5, 10)
 
 def _format_date(email_date: str | None) -> str:
     if not email_date:
@@ -40,6 +45,33 @@ def _message_sort_key(message: dict) -> tuple[int, str]:
     return (0, email_date)
 
 
+async def _classify_with_retry(subject: str, body: str, email_date: str | None = None) -> dict:
+    attempts = len(_CLASSIFY_RETRY_DELAYS) + 1
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return classify_email(subject, body, email_date=email_date)
+        except (
+            google_exceptions.InternalServerError,
+            google_exceptions.ServiceUnavailable,
+            google_exceptions.DeadlineExceeded,
+            google_exceptions.TooManyRequests,
+        ) as exc:
+            if attempt == attempts:
+                raise
+
+            delay = _CLASSIFY_RETRY_DELAYS[attempt - 1]
+            logger.warning(
+                "Retrying classify for %r after %s (%s/%s, sleep=%ss)",
+                subject,
+                type(exc).__name__,
+                attempt,
+                attempts,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+
 async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
     cycle = cycles_db.get_active_cycle(telegram_id)
     if not cycle:
@@ -64,10 +96,15 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
         subject, body = extract_subject_and_body(msg)
 
         try:
-            result = classify_email(subject, body, email_date=email_date)
-            await asyncio.sleep(20)
+            result = await _classify_with_retry(subject, body, email_date=email_date)
+            await asyncio.sleep(5)
         except Exception as e:
-            print(f"CLASSIFY ERROR for '{subject}': {e}")
+            logger.exception(
+                "CLASSIFY ERROR for %r (%s): %s",
+                subject,
+                type(e).__name__,
+                e,
+            )
             continue
 
         if result.get("type") == "irrelevant":

@@ -6,9 +6,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-_model = genai.GenerativeModel("gemini-2.5-flash-lite")
+_model = genai.GenerativeModel("gemma-4-31b-it")
+_GENERATION_CONFIG = {
+    "response_mime_type": "application/json",
+}
 
-_PROMPT_TEMPLATE = """You are a job application email classifier. Analyse the email below and return ONLY valid JSON — no preamble, no markdown fences.
+_PROMPT_TEMPLATE = """You are a job application email classifier.
+
+You must return EXACTLY ONE valid JSON object matching the schema below.
+Do not include explanations, reasoning, bullet points, markdown, code fences, labels, or any text before or after the JSON object.
+If you output anything other than the JSON object, the response is invalid.
 
 Output schema:
 {{
@@ -50,6 +57,48 @@ Body:
 {body}"""
 
 
+def _extract_response_text(response) -> str:
+    chunks: list[str] = []
+
+    for candidate in getattr(response, "candidates", []) or []:
+        content = getattr(candidate, "content", None)
+        parts = getattr(content, "parts", []) or []
+        for part in parts:
+            text = getattr(part, "text", None)
+            if text is None and hasattr(part, "get"):
+                text = part.get("text")
+            if text:
+                chunks.append(text)
+
+    if chunks:
+        return "".join(chunks).strip()
+
+    try:
+        return response.text.strip()
+    except Exception as exc:
+        raise ValueError(f"Model returned no readable text parts: {response}") from exc
+
+
+def _parse_json_response(text: str) -> dict:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(text[index:])
+            if isinstance(payload, dict):
+                return payload
+        except json.JSONDecodeError:
+            continue
+
+    raise json.JSONDecodeError("No JSON object found in model response", text, 0)
+
+
 def classify_email(subject: str, body: str, email_date: str | None = None) -> dict:
     print(f"\n{'='*60}")
     print(f"SUBJECT : {subject}")
@@ -61,8 +110,8 @@ def classify_email(subject: str, body: str, email_date: str | None = None) -> di
         body=body,
         email_date=email_date or "unknown",
     )
-    response = _model.generate_content(prompt)
-    text = response.text.strip()
+    response = _model.generate_content(prompt, generation_config=_GENERATION_CONFIG)
+    text = _extract_response_text(response)
 
     print(f"GEMINI  : {text}")
     print(f"{'='*60}\n")
@@ -72,4 +121,6 @@ def classify_email(subject: str, body: str, email_date: str | None = None) -> di
         lines = text.splitlines()
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
 
-    return json.loads(text)
+    payload = _parse_json_response(text)
+    print(f"PARSED  : {json.dumps(payload, ensure_ascii=False)}")
+    return payload
