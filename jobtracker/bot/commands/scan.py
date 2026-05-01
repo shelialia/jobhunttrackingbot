@@ -1,4 +1,5 @@
 import asyncio
+from html import escape
 from datetime import datetime
 from telegram import Bot, Update
 from telegram.ext import ContextTypes
@@ -15,6 +16,21 @@ def _format_date(email_date: str | None) -> str:
         return dt.strftime("%d %b").lstrip("0")
     except Exception:
         return ""
+
+
+def _format_scan_item(company: str, role: str, email_date: str | None, low_conf: bool) -> str:
+    date_str = _format_date(email_date)
+    company_html = escape(company)
+    role_html = escape(role)
+
+    parts = [f"• <b>{company_html}</b>"]
+    if role_html:
+        parts.append(f" <i>{role_html}</i>")
+    if date_str:
+        parts.append(f" <code>{escape(date_str)}</code>")
+    if low_conf:
+        parts.append(" <i>Low confidence</i>")
+    return "".join(parts)
 
 
 async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
@@ -112,32 +128,30 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
 
     if not items:
         text = "✅ Scan complete — no new tasks found."
+        parse_mode = None
     else:
         applications = [i for i in items if i[1] == "application"]
         tasks = [i for i in items if i[1] in ("oa", "hirevue", "interview")]
         rejections = [i for i in items if i[1] == "rejection"]
         offers = [i for i in items if i[1] == "offer"]
 
-        lines = ["✅ *Scan complete!*\n"]
+        lines = ["✅ <b>Scan complete!</b>", ""]
         for group_label, group in (
             ("📝 Applications Submitted", applications),
             ("🎯 Interviews & Assessments", tasks),
-            ("❌ Rejections", rejections),
             ("🎉 Offers", offers),
+            ("❌ Rejections", rejections),
         ):
             if not group:
                 continue
-            lines.append(f"{group_label} ({len(group)})")
+            lines.append(f"<u><b>{escape(group_label)}</b></u> <b>({len(group)})</b>")
             for company, _, role, email_date, low_conf in group:
-                date_str = _format_date(email_date)
-                label = f"{company} — {role}" if role else company
-                suffix = f" ({date_str})" if date_str else ""
-                warn = " ⚠️" if low_conf else ""
-                lines.append(f"- {label}{suffix}{warn}")
+                lines.append(_format_scan_item(company, role, email_date, low_conf))
             lines.append("")
         text = "\n".join(lines).strip()
+        parse_mode = "HTML"
 
-    await bot.send_message(chat_id=telegram_id, text=text, parse_mode="Markdown")
+    await bot.send_message(chat_id=telegram_id, text=text, parse_mode=parse_mode)
 
 
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -1,3 +1,4 @@
+from html import escape
 from datetime import datetime
 from telegram import Bot
 from ..db import tasks as tasks_db, users as users_db
@@ -6,16 +7,19 @@ _TASK_EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞"}
 
 
 def _format_application(row) -> str:
-    company = row["company"] or "Unknown"
-    role = f" — {row['role']}" if row["role"] else ""
-    return f"📝 *{company}*{role}"
+    company = escape(row["company"] or "Unknown")
+    role = escape(row["role"]) if row["role"] else ""
+    parts = [f"• <b>{company}</b>"]
+    if role:
+        parts.append(f" <i>{role}</i>")
+    return "".join(parts)
 
 
 def _format_task(row) -> str:
-    company = row["company"] or "Unknown"
+    company = escape(row["company"] or "Unknown")
     emoji = _TASK_EMOJI.get(row["type"], "📌")
-    type_label = row["type"].upper()
-    role = f" — {row['role']}" if row["role"] else ""
+    type_label = escape(row["type"].upper())
+    role = escape(row["role"]) if row["role"] else ""
     if row["deadline"]:
         dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
         days = (dt - datetime.utcnow()).days
@@ -27,7 +31,13 @@ def _format_task(row) -> str:
             deadline_str = f"{days}d remaining"
     else:
         deadline_str = "no deadline"
-    return f"{emoji} *{company}*{role} — {type_label} [{deadline_str}]"
+
+    parts = [f"• {emoji} <b>{company}</b>"]
+    if role:
+        parts.append(f" <i>{role}</i>")
+    parts.append(f" <code>{type_label}</code>")
+    parts.append(f" <i>{escape(deadline_str)}</i>")
+    return "".join(parts)
 
 
 async def send_daily_digest(bot: Bot) -> None:
@@ -46,7 +56,7 @@ async def send_daily_digest(bot: Bot) -> None:
         if not applications and not tasks and not offers and not rejections:
             continue
 
-        lines = [f"☀️ *Daily Digest — {datetime.utcnow().strftime('%d %b %Y')}*\n"]
+        lines = [f"☀️ <b>Daily Digest</b> <code>{datetime.utcnow().strftime('%d %b %Y')}</code>", ""]
         sections = [
             ("📝 Applications Submitted", applications, _format_application),
             ("🎯 Interviews & Assessments", tasks, _format_task),
@@ -57,17 +67,17 @@ async def send_daily_digest(bot: Bot) -> None:
         for title, rows, formatter in sections:
             if not rows:
                 continue
-            lines.append(f"{title} ({len(rows)})")
+            lines.append(f"<u><b>{escape(title)}</b></u> <b>({len(rows)})</b>")
             lines.extend(formatter(row) for row in rows)
             lines.append("")
 
-        lines.append("_Use /tasks for details or /done <task_number> to mark complete._")
+        lines.append("<i>Use /tasks for details or /done &lt;task_number&gt; to mark complete.</i>")
 
         try:
             await bot.send_message(
                 chat_id=telegram_id,
                 text="\n".join(lines),
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
         except Exception:
             pass
