@@ -126,30 +126,34 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
 
     users.update_last_scanned(telegram_id)
 
-    if not items:
-        text = "✅ Scan complete — no new tasks found."
-        parse_mode = None
-    else:
-        applications = [i for i in items if i[1] == "application"]
-        tasks = [i for i in items if i[1] in ("oa", "hirevue", "interview")]
-        rejections = [i for i in items if i[1] == "rejection"]
-        offers = [i for i in items if i[1] == "offer"]
+    applications = [i for i in items if i[1] == "application"]
+    tasks = [i for i in items if i[1] in ("oa", "hirevue", "interview")]
+    rejections = [i for i in items if i[1] == "rejection"]
+    offers = [i for i in items if i[1] == "offer"]
 
-        lines = ["✅ <b>Scan complete!</b>", ""]
-        for group_label, group in (
-            ("📝 Applications Submitted", applications),
-            ("🎯 Interviews & Assessments", tasks),
-            ("🎉 Offers", offers),
-            ("❌ Rejections", rejections),
-        ):
-            if not group:
-                continue
-            lines.append(f"<u><b>{escape(group_label)}</b></u> <b>({len(group)})</b>")
-            for company, _, role, email_date, low_conf in group:
-                lines.append(_format_scan_item(company, role, email_date, low_conf))
-            lines.append("")
-        text = "\n".join(lines).strip()
-        parse_mode = "HTML"
+    lines = ["✅ <b>Scan complete!</b>", ""]
+    for group_label, group in (
+        ("📝 Applications Submitted", applications),
+        ("🎯 Pending Tasks", tasks),
+    ):
+        lines.append(f"<u><b>{escape(group_label)}</b></u> <b>({len(group)})</b>")
+        for company, _, role, email_date, low_conf in group:
+            lines.append(_format_scan_item(company, role, email_date, low_conf))
+        lines.append("")
+
+    for group_label, group in (
+        ("🎉 Offers", offers),
+        ("❌ Rejections", rejections),
+    ):
+        if not group:
+            continue
+        lines.append(f"<u><b>{escape(group_label)}</b></u> <b>({len(group)})</b>")
+        for company, _, role, email_date, low_conf in group:
+            lines.append(_format_scan_item(company, role, email_date, low_conf))
+        lines.append("")
+
+    text = "\n".join(lines).strip()
+    parse_mode = "HTML"
 
     await bot.send_message(chat_id=telegram_id, text=text, parse_mode=parse_mode)
 

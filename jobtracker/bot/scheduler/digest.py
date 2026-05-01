@@ -53,18 +53,21 @@ async def send_daily_digest(bot: Bot) -> None:
         offers = tasks_db.get_applications_by_status(telegram_id, "offer")
         rejections = tasks_db.get_applications_by_status(telegram_id, "rejected")
 
-        if not applications and not tasks and not offers and not rejections:
-            continue
-
         lines = [f"☀️ <b>Daily Digest</b> <code>{datetime.utcnow().strftime('%d %b %Y')}</code>", ""]
-        sections = [
+        primary_sections = [
             ("📝 Applications Submitted", applications, _format_application),
-            ("🎯 Interviews & Assessments", tasks, _format_task),
-            ("🎉 Offers", offers, _format_application),
-            ("❌ Rejections", rejections, _format_application),
+            ("🎯 Pending Tasks", tasks, _format_task),
         ]
 
-        for title, rows, formatter in sections:
+        for title, rows, formatter in primary_sections:
+            lines.append(f"<u><b>{escape(title)}</b></u> <b>({len(rows)})</b>")
+            lines.extend(formatter(row) for row in rows)
+            lines.append("")
+
+        for title, rows, formatter in (
+            ("🎉 Offers", offers, _format_application),
+            ("❌ Rejections", rejections, _format_application),
+        ):
             if not rows:
                 continue
             lines.append(f"<u><b>{escape(title)}</b></u> <b>({len(rows)})</b>")
