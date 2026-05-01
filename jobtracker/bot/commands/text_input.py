@@ -19,12 +19,10 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if state == "onboarding":
         await update.message.reply_text(
-            f'✅ Cycle *"{name}"* created!\n\n'
-            "👋 *Welcome to CronJobBot!*\n\n"
-            "I monitor your Gmail inbox for job application tasks — "
-            "OAs, HireVues, interviews — and help you stay on top of deadlines.\n\n"
-            "🔗 Connect your Gmail to get started:\n/connect\n\n"
-            "Type /help to see all available commands.",
+            f'🎉 *Cycle "{name}" created!*\n\n'
+            "✅ Onboarding complete — let's get this bread! 🔥🚀\n\n"
+            "One last step: connect your Gmail so I can start tracking your applications automatically.\n\n"
+            "👇 Tap below to get started:\n/connect",
             parse_mode="Markdown",
         )
     else:
