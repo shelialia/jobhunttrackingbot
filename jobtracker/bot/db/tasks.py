@@ -69,6 +69,37 @@ def _find_matching_application(
     return best_id if best_score >= 80 else None
 
 
+def _find_unique_application_by_company(
+    telegram_id: int,
+    company: str,
+    cycle_id: Optional[int] = None,
+    include_ghost: bool = False,
+) -> Optional[int]:
+    company_n = _normalise(company)
+    cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
+
+    query = """SELECT id FROM tasks
+               WHERE telegram_id = ? AND type = 'application'
+               AND company_normalised = ? AND created_at >= ?"""
+    params: list[object] = [telegram_id, company_n, cutoff]
+
+    if cycle_id is not None:
+        query += " AND cycle_id = ?"
+        params.append(cycle_id)
+
+    if not include_ghost:
+        query += " AND is_ghost = 0"
+
+    query += " ORDER BY created_at DESC"
+
+    with get_connection() as conn:
+        rows = conn.execute(query, tuple(params)).fetchall()
+
+    if len(rows) == 1:
+        return rows[0]["id"]
+    return None
+
+
 def find_application_for_linking(telegram_id: int, company: str, role: str, cycle_id: Optional[int] = None) -> Optional[int]:
     """Return the most recent real application for this company with the best fuzzy role match, or None."""
     return _find_matching_application(
@@ -100,11 +131,29 @@ def find_or_create_application_for_linking(
     if app_id is not None:
         return app_id
 
+    unique_real_app_id = _find_unique_application_by_company(
+        telegram_id,
+        company,
+        cycle_id=cycle_id,
+        include_ghost=False,
+    )
+    if unique_real_app_id is not None:
+        return unique_real_app_id
+
     best_id = _find_matching_application(
         telegram_id, company, role, cycle_id=cycle_id, include_ghost=True
     )
     if best_id is not None:
         return best_id
+
+    unique_any_app_id = _find_unique_application_by_company(
+        telegram_id,
+        company,
+        cycle_id=cycle_id,
+        include_ghost=True,
+    )
+    if unique_any_app_id is not None:
+        return unique_any_app_id
 
     return insert_task(
         telegram_id=telegram_id,
@@ -635,7 +684,6 @@ def get_sankey_edges(telegram_id: int, cycle_id: int) -> list[tuple[str, str, in
                        source_application_id
                    FROM tasks
                    WHERE type = 'application'
-                     AND is_ghost = 0
                      AND cycle_id = ?
                      AND telegram_id = ?
                    UNION ALL
@@ -648,12 +696,29 @@ def get_sankey_edges(telegram_id: int, cycle_id: int) -> list[tuple[str, str, in
                    JOIN chain c ON t.source_application_id = c.id
                    WHERE t.type != 'irrelevant'
                )
-               SELECT p.type AS source, c.type AS target, COUNT(*) AS flow
-               FROM chain c
-               JOIN chain p ON c.source_application_id = p.id AND c.root_id = p.root_id
-               WHERE c.type != 'irrelevant'
-               GROUP BY p.type, c.type
-               ORDER BY p.type, c.type""",
+               , edges AS (
+                   SELECT p.type AS source, c.type AS target, COUNT(*) AS flow
+                   FROM chain c
+                   JOIN chain p ON c.source_application_id = p.id AND c.root_id = p.root_id
+                   WHERE c.type != 'irrelevant'
+                   GROUP BY p.type, c.type
+               )
+               , ghosted_edges AS (
+                   SELECT c.type AS source, 'ghosted' AS target, COUNT(*) AS flow
+                   FROM chain c
+                   WHERE c.type IN ('application', 'oa', 'hirevue', 'interview')
+                     AND NOT EXISTS (
+                         SELECT 1
+                         FROM tasks t
+                         WHERE t.source_application_id = c.id
+                           AND t.type != 'irrelevant'
+                     )
+                   GROUP BY c.type
+               )
+               SELECT source, target, flow FROM edges
+               UNION ALL
+               SELECT source, target, flow FROM ghosted_edges
+               ORDER BY source, target""",
             (cycle_id, telegram_id),
         ).fetchall()
     return [(row["source"], row["target"], row["flow"]) for row in rows]

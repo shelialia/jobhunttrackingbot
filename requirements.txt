@@ -8,3 +8,4 @@ Flask==3.0.3
 python-dotenv==1.0.1
 rapidfuzz==3.9.3
 plotly==5.24.1
+kaleido==0.2.1

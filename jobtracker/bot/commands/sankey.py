@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 from ..db import cycles as cycles_db, tasks as tasks_db, users
 
 
-_NODE_ORDER = ["application", "oa", "hirevue", "interview", "offer", "rejection"]
+_NODE_ORDER = ["application", "oa", "hirevue", "interview", "offer", "rejection", "ghosted"]
 _NODE_COLORS = {
     "application": "#3b82f6",
     "oa": "#f97316",
@@ -15,6 +15,16 @@ _NODE_COLORS = {
     "interview": "#14b8a6",
     "offer": "#22c55e",
     "rejection": "#ef4444",
+    "ghosted": "#808080",
+}
+_NODE_LABELS = {
+    "application": "Application",
+    "oa": "OA",
+    "hirevue": "HireVue",
+    "interview": "Interview",
+    "offer": "Offer",
+    "rejection": "Rejection",
+    "ghosted": "Ghosted",
 }
 
 
@@ -36,19 +46,34 @@ async def sankey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except ImportError:
         await update.message.reply_text("Plotly is not installed. Add it to the environment before using /sankey.")
         return
+    try:
+        import kaleido  # noqa: F401
+    except ImportError:
+        await update.message.reply_text("Kaleido is not installed. Add it to the environment before using /sankey.")
+        return
 
     edges = tasks_db.get_sankey_edges(telegram_id, cycle["id"])
-    breakdown = tasks_db.get_interview_breakdown(telegram_id, cycle["id"])
 
     node_indices = {label: idx for idx, label in enumerate(_NODE_ORDER)}
     source_indices = [node_indices[source] for source, _, _ in edges]
     target_indices = [node_indices[target] for _, target, _ in edges]
     flow_values = [flow for _, _, flow in edges]
+    outgoing_counts = {label: 0 for label in _NODE_ORDER}
+    incoming_counts = {label: 0 for label in _NODE_ORDER}
+    for source, target, flow in edges:
+        outgoing_counts[source] += flow
+        incoming_counts[target] += flow
+
+    node_labels = []
+    for label in _NODE_ORDER:
+        count = outgoing_counts[label] if outgoing_counts[label] else incoming_counts[label]
+        node_labels.append(f"{_NODE_LABELS[label]} ({count})")
 
     fig = go.Figure(
         go.Sankey(
+            domain=dict(x=[0.0, 1.0], y=[0.0, 1.0]),
             node=dict(
-                label=_NODE_ORDER,
+                label=node_labels,
                 color=[_NODE_COLORS[label] for label in _NODE_ORDER],
                 pad=15,
                 thickness=20,
@@ -63,38 +88,22 @@ async def sankey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     fig.update_layout(
         title=f"Job Search Funnel - {cycle['name']}",
         font_size=12,
+        width=1400,
+        height=900,
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        margin=dict(l=40, r=40, t=80, b=40),
     )
 
-    bucket_rows = "".join(
-        f"<tr><td>{label}</td><td>{count}</td></tr>"
-        for label, count in breakdown["buckets"].items()
-    )
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Job Search Funnel - {cycle['name']}</title>
-</head>
-<body>
-  {fig.to_html(full_html=False, include_plotlyjs='cdn')}
-  <h2>Interview Depth</h2>
-  <table border="1" cellpadding="6" cellspacing="0">
-    <thead><tr><th>Bucket</th><th>Count</th></tr></thead>
-    <tbody>{bucket_rows}</tbody>
-  </table>
-</body>
-</html>
-"""
-
-    temp_file = tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8")
+    temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
     try:
-        temp_file.write(html)
         temp_file.close()
+        fig.write_image(temp_file.name, format="png", scale=2)
         with open(temp_file.name, "rb") as handle:
-            await context.bot.send_document(
+            await context.bot.send_photo(
                 chat_id=update.effective_chat.id,
-                document=handle,
-                filename="sankey.html",
+                photo=handle,
+                caption=f"📊 Job Search Funnel - {cycle['name']}",
             )
     finally:
         if not temp_file.closed:
