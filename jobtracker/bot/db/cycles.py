@@ -5,7 +5,10 @@ from .schema import get_connection
 
 def create_cycle(telegram_id: int, name: str) -> int:
     with get_connection() as conn:
-        conn.execute("UPDATE cycles SET is_active = 0 WHERE telegram_id = ?", (telegram_id,))
+        conn.execute(
+            "UPDATE cycles SET is_active = 0, ended_at = CURRENT_TIMESTAMP WHERE telegram_id = ? AND is_active = 1",
+            (telegram_id,),
+        )
         cursor = conn.execute(
             "INSERT INTO cycles (telegram_id, name, is_active) VALUES (?, ?, 1)",
             (telegram_id, name),
@@ -39,8 +42,14 @@ def end_cycle(cycle_id: int) -> None:
 
 def switch_to_cycle(telegram_id: int, cycle_id: int) -> None:
     with get_connection() as conn:
-        conn.execute("UPDATE cycles SET is_active = 0 WHERE telegram_id = ?", (telegram_id,))
-        conn.execute("UPDATE cycles SET is_active = 1 WHERE id = ?", (cycle_id,))
+        conn.execute(
+            "UPDATE cycles SET is_active = 0, ended_at = CURRENT_TIMESTAMP WHERE telegram_id = ? AND is_active = 1",
+            (telegram_id,),
+        )
+        conn.execute(
+            "UPDATE cycles SET is_active = 1, ended_at = NULL WHERE id = ?",
+            (cycle_id,),
+        )
 
 
 def get_cycle_summary(telegram_id: int, cycle_id: int) -> dict:
@@ -50,7 +59,7 @@ def get_cycle_summary(telegram_id: int, cycle_id: int) -> dict:
             (telegram_id, cycle_id),
         ).fetchone()[0]
         interviews = conn.execute(
-            "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type = 'interview'",
+            "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type IN ('oa', 'hirevue', 'interview')",
             (telegram_id, cycle_id),
         ).fetchone()[0]
         offers = conn.execute(

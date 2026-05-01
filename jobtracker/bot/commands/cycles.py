@@ -21,7 +21,7 @@ async def cycles_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         dot = "🟢" if cycle["is_active"] else "⚪"
         label = " (active)" if cycle["is_active"] else " (ended)"
         lines.append(f"{dot} *{cycle['name']}*{label}")
-        lines.append(f"   {summary['apps']} apps · {summary['interviews']} interviews")
+        lines.append(f"   {summary['apps']} apps · {summary['interviews']} assessments")
         if summary["offers"]:
             lines[-1] += f" · {summary['offers']} offer(s)"
         lines.append("")
