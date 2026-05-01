@@ -75,7 +75,11 @@ def init_db() -> None:
                 company_normalised TEXT,
                 role TEXT,
                 role_normalised TEXT,
+                interview_round TEXT,
                 deadline TIMESTAMP,
+                interview_date TIMESTAMP,
+                interview_platform TEXT,
+                confirmed_at TIMESTAMP,
                 link TEXT,
                 email_date TIMESTAMP,
                 status TEXT NOT NULL DEFAULT 'incomplete',
@@ -98,6 +102,14 @@ def init_db() -> None:
             conn.execute("ALTER TABLE tasks ADD COLUMN email_date TIMESTAMP")
         if "cycle_id" not in cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN cycle_id INTEGER REFERENCES cycles(id)")
+        if "interview_round" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN interview_round TEXT")
+        if "interview_date" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN interview_date TIMESTAMP")
+        if "interview_platform" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN interview_platform TEXT")
+        if "confirmed_at" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN confirmed_at TIMESTAMP")
         conn.execute("UPDATE tasks SET status = 'rejected' WHERE status = 'reject'")
         user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
         if "last_manual_scanned_at" not in user_cols:

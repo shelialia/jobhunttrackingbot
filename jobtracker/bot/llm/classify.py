@@ -24,7 +24,11 @@ Output schema:
   "role": "<string or null>",
   "deadline": "<ISO8601 datetime or null>",
   "link": "<URL string or null>",
-  "confidence": <float 0-1>
+  "confidence": <float 0-1>,
+  "interview_round": "<string or null>",
+  "interview_date": "<ISO8601 datetime or null>",
+  "interview_platform": "<string or null>",
+  "email_subtype": "invitation | scheduling | confirmation | unknown"
 }}
 
 Rules:
@@ -47,6 +51,10 @@ Rules:
 - deadline: if an exact date/time is given, convert it to ISO 8601 UTC. If a relative window is given (e.g. "you have 7 days", "complete within 1 week"), calculate the absolute deadline by adding that duration to the email received date provided below. Return null only if no deadline information is present at all.
 - link: the direct assessment or meeting URL if present; null otherwise
 - confidence: your confidence in the classification (0-1)
+- interview_round: for interview emails only, extract the stated round/stage if present (for example: recruiter screen, first round, technical interview, final round, panel). Otherwise null.
+- interview_date: for interview emails only, extract the confirmed or proposed interview date/time in ISO 8601 UTC if present. Otherwise null.
+- interview_platform: for interview emails only, extract the interview platform if present (for example: Zoom, Google Meet, Microsoft Teams, phone, onsite). Otherwise null.
+- email_subtype: for interview emails only, classify the email as invitation, scheduling, confirmation, or unknown. Use unknown for non-interview emails.
 
 Key distinction: only classify emails that are part of an ACTIVE, PENDING application process. Post-acceptance emails (team matching updates, onboarding, intro calls with future colleagues/mentors) are irrelevant.
 

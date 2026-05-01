@@ -122,6 +122,10 @@ def insert_task(
     email_date: Optional[str] = None,
     cycle_id: Optional[int] = None,
     status: str = "incomplete",
+    interview_round: Optional[str] = None,
+    interview_date: Optional[str] = None,
+    interview_platform: Optional[str] = None,
+    confirmed_at: Optional[str] = None,
 ) -> Optional[int]:
     company_n = _normalise(company)
     role_n = _normalise(role)
@@ -132,11 +136,13 @@ def insert_task(
                 """INSERT INTO tasks
                    (telegram_id, cycle_id, source_application_id, gmail_id, type,
                     company, company_normalised, role, role_normalised,
-                    deadline, link, email_date, status, is_ghost)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    interview_round, deadline, interview_date, interview_platform,
+                    confirmed_at, link, email_date, status, is_ghost)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (telegram_id, cycle_id, source_application_id, gmail_id,
                  task_type, company, company_n, role, role_n,
-                 deadline, link, email_date, status, is_ghost),
+                 interview_round, deadline, interview_date, interview_platform,
+                 confirmed_at, link, email_date, status, is_ghost),
             )
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -286,6 +292,117 @@ def merge_application_email(
                 role,
                 role_n,
                 deadline,
+                link,
+                email_date,
+                email_date,
+                email_date,
+                email_date,
+                task_id,
+            ),
+        )
+
+
+def find_existing_interview(
+    telegram_id: int,
+    cycle_id: int,
+    company: str,
+    interview_round: Optional[str] = None,
+) -> Optional[sqlite3.Row]:
+    company_n = _normalise(company)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT * FROM tasks
+               WHERE telegram_id = ? AND cycle_id = ?
+               AND type = 'interview'
+               AND company_normalised = ?
+               ORDER BY created_at DESC""",
+            (telegram_id, cycle_id, company_n),
+        ).fetchall()
+
+    if interview_round:
+        round_n = _normalise(interview_round)
+        for row in rows:
+            if _normalise(row["interview_round"] or "") == round_n:
+                return row
+        return None
+
+    cutoff = datetime.utcnow() - timedelta(days=7)
+    for row in rows:
+        created_at = row["created_at"]
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at)
+            except ValueError:
+                continue
+        if created_at and created_at >= cutoff:
+            return row
+    return None
+
+
+def update_interview_task(
+    task_id: int,
+    *,
+    gmail_id: Optional[str] = None,
+    source_application_id: Optional[int] = None,
+    company: Optional[str] = None,
+    role: Optional[str] = None,
+    deadline: Optional[str] = None,
+    link: Optional[str] = None,
+    email_date: Optional[str] = None,
+    interview_round: Optional[str] = None,
+    interview_date: Optional[str] = None,
+    interview_platform: Optional[str] = None,
+    confirmed_at: Optional[str] = None,
+) -> None:
+    company_value = company if company else None
+    role_value = role if role else None
+    company_n = _normalise(company_value) if company_value else None
+    role_n = _normalise(role_value) if role_value else None
+
+    with get_connection() as conn:
+        conn.execute(
+            """UPDATE tasks
+               SET gmail_id = COALESCE(gmail_id, ?),
+                   source_application_id = COALESCE(source_application_id, ?),
+                   company = COALESCE(?, company),
+                   company_normalised = CASE
+                       WHEN ? IS NOT NULL THEN ?
+                       ELSE company_normalised
+                   END,
+                   role = COALESCE(?, role),
+                   role_normalised = CASE
+                       WHEN ? IS NOT NULL THEN ?
+                       ELSE role_normalised
+                   END,
+                   interview_round = COALESCE(?, interview_round),
+                   deadline = COALESCE(?, deadline),
+                   interview_date = COALESCE(?, interview_date),
+                   interview_platform = COALESCE(?, interview_platform),
+                   confirmed_at = COALESCE(?, confirmed_at),
+                   link = COALESCE(?, link),
+                   email_date = CASE
+                       WHEN ? IS NULL THEN email_date
+                       WHEN email_date IS NULL THEN ?
+                       WHEN email_date > ? THEN ?
+                       ELSE email_date
+                   END,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (
+                gmail_id,
+                source_application_id,
+                company_value,
+                company_n,
+                company_n,
+                role_value,
+                role_n,
+                role_n,
+                interview_round,
+                deadline,
+                interview_date,
+                interview_platform,
+                confirmed_at,
                 link,
                 email_date,
                 email_date,

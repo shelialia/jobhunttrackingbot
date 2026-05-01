@@ -174,6 +174,10 @@ async def _run_scan(
         role = result.get("role") or ""
         deadline = result.get("deadline")
         link = result.get("link")
+        interview_round = result.get("interview_round")
+        interview_date = result.get("interview_date")
+        interview_platform = result.get("interview_platform")
+        email_subtype = result.get("email_subtype") or "unknown"
 
         source_application_id = None
         if task_type == "application":
@@ -198,6 +202,36 @@ async def _run_scan(
                     deadline=deadline,
                     link=link,
                     email_date=email_date,
+                )
+                items.append((company, task_type, role, email_date, confidence < 0.7))
+                continue
+
+        if task_type == "interview":
+            existing_interview = tasks_db.find_existing_interview(
+                telegram_id,
+                cycle_id,
+                company,
+                interview_round=interview_round,
+            )
+            if existing_interview is not None:
+                source_application_id = existing_interview["source_application_id"]
+                if source_application_id is None:
+                    source_application_id = tasks_db.find_or_create_application_for_linking(
+                        telegram_id, company, role, cycle_id=cycle_id, email_date=email_date
+                    )
+                tasks_db.update_interview_task(
+                    existing_interview["id"],
+                    gmail_id=gmail_id,
+                    source_application_id=source_application_id,
+                    company=company,
+                    role=role,
+                    deadline=deadline,
+                    link=link,
+                    email_date=email_date,
+                    interview_round=interview_round,
+                    interview_date=interview_date,
+                    interview_platform=interview_platform,
+                    confirmed_at=email_date if email_subtype == "confirmation" else None,
                 )
                 items.append((company, task_type, role, email_date, confidence < 0.7))
                 continue
@@ -246,6 +280,14 @@ async def _run_scan(
             telegram_id, gmail_id, task_type,
             company, role, deadline, link, source_application_id,
             email_date=email_date, cycle_id=cycle_id,
+            interview_round=interview_round if task_type == "interview" else None,
+            interview_date=interview_date if task_type == "interview" else None,
+            interview_platform=interview_platform if task_type == "interview" else None,
+            confirmed_at=(
+                email_date
+                if task_type == "interview" and email_subtype == "confirmation"
+                else None
+            ),
         )
 
         if task_id is None:
