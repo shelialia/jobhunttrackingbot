@@ -58,15 +58,29 @@ def _format_scan_datetime(dt: datetime) -> str:
     return dt.astimezone(_SGT).strftime("%d %b %I:%M %p").lstrip("0")
 
 
-def _calculate_scan_start(user: dict, now_utc: datetime) -> tuple[datetime, bool]:
+def _calculate_scan_start(
+    user: dict,
+    cycle: dict,
+    now_utc: datetime,
+    scan_mode: str,
+) -> tuple[datetime, bool, bool]:
+    cycle_started_at = _to_utc(cycle.get("started_at"))
+    last_manual_scan = _to_utc(user.get("last_manual_scanned_at"))
+    first_manual_scan_for_cycle = (
+        scan_mode == "manual"
+        and cycle_started_at is not None
+        and (last_manual_scan is None or last_manual_scan < cycle_started_at)
+    )
+    if first_manual_scan_for_cycle:
+        return now_utc - timedelta(days=14), False, True
+
     last_scan = _to_utc(user.get("last_scanned_at"))
     capped_start = now_utc - timedelta(hours=24)
     if last_scan is None:
-        return capped_start, False
+        return capped_start, False, False
     if last_scan >= capped_start:
-        last_manual = _to_utc(user.get("last_manual_scanned_at"))
-        return last_scan, last_manual is not None and last_manual == last_scan
-    return capped_start, False
+        return last_scan, last_manual_scan is not None and last_manual_scan == last_scan, False
+    return capped_start, False, False
 
 
 async def _classify_with_retry(subject: str, body: str, email_date: str | None = None) -> dict:
@@ -101,10 +115,8 @@ async def _run_scan(
     telegram_id: int,
     user: dict,
     *,
-    scan_start: datetime,
     scan_started_at: datetime,
     scan_mode: str,
-    window_from_last_manual_scan: bool,
 ) -> None:
     cycle = cycles_db.get_active_cycle(telegram_id)
     if not cycle:
@@ -114,11 +126,21 @@ async def _run_scan(
         )
         return
     cycle_id = cycle["id"]
+    scan_start, window_from_last_manual_scan, first_manual_scan_for_cycle = _calculate_scan_start(
+        user,
+        dict(cycle),
+        scan_started_at,
+        scan_mode,
+    )
     formatted_since = _format_scan_datetime(scan_start)
 
     await bot.send_message(
         chat_id=telegram_id,
-        text=f"🔍 Scanning emails since {formatted_since}...",
+        text=(
+            f"🔍 <b>Scanning emails since {escape(formatted_since)}...</b>"
+            + ("\n📥 <i>First sync for this cycle</i>" if first_manual_scan_for_cycle else "")
+        ),
+        parse_mode="HTML",
     )
 
     messages = fetch_new_messages(user["gmail_token_json"], scan_start)
@@ -244,10 +266,12 @@ async def _run_scan(
 
     since_text = escape(_format_scan_datetime(scan_start))
     if scan_mode == "manual":
-        header = f"✅ Scan complete! (since {since_text})"
+        header = f"✅ <b>Scan complete!</b> <code>(since {since_text})</code>"
+        if first_manual_scan_for_cycle:
+            header += "\n📬 <i>Cycle backfill complete</i>"
     else:
         suffix = " — last manual scan" if window_from_last_manual_scan else ""
-        header = f"🤖 Daily auto-scan complete! (since {since_text}{escape(suffix)})"
+        header = f"🤖 <b>Daily auto-scan complete!</b> <code>(since {since_text}{escape(suffix)})</code>"
 
     lines = [header, ""]
     for group_label, group in (
@@ -285,15 +309,12 @@ async def run_daily_auto_scan(bot: Bot) -> None:
 
         telegram_id = user["telegram_id"]
         user_dict = dict(user)
-        scan_start, from_last_manual_scan = _calculate_scan_start(user_dict, now_utc)
         await _run_scan(
             bot,
             telegram_id,
             user_dict,
-            scan_start=scan_start,
             scan_started_at=now_utc,
             scan_mode="auto",
-            window_from_last_manual_scan=from_last_manual_scan,
         )
 
 
@@ -309,16 +330,12 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Gmail not connected. Use /connect first.")
         return
 
-    now_utc = datetime.now(timezone.utc)
-    scan_start, from_last_manual_scan = _calculate_scan_start(dict(user), now_utc)
     asyncio.create_task(
         _run_scan(
             context.bot,
             telegram_id,
             dict(user),
-            scan_start=scan_start,
-            scan_started_at=now_utc,
+            scan_started_at=datetime.now(timezone.utc),
             scan_mode="manual",
-            window_from_last_manual_scan=from_last_manual_scan,
         )
     )
