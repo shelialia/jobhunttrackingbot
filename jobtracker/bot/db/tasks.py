@@ -241,6 +241,50 @@ def get_assessment_tasks(telegram_id: int) -> list[sqlite3.Row]:
         ).fetchall()
 
 
+def get_cycle_assessment_tasks(telegram_id: int, cycle_id: int) -> list[sqlite3.Row]:
+    now_iso = datetime.utcnow().isoformat()
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT * FROM tasks
+               WHERE telegram_id = ? AND cycle_id = ?
+               AND status = 'incomplete' AND is_ghost = 0
+               AND type IN ('oa', 'hirevue', 'interview')
+               ORDER BY
+                 CASE
+                   WHEN COALESCE(interview_date, deadline) IS NULL THEN 0
+                   WHEN COALESCE(interview_date, deadline) < ? THEN 1
+                   ELSE 2
+                 END ASC,
+                 COALESCE(interview_date, deadline) ASC,
+                 CASE type
+                   WHEN 'interview' THEN 0
+                   WHEN 'hirevue'   THEN 1
+                   WHEN 'oa'        THEN 2
+                 END ASC""",
+            (telegram_id, cycle_id, now_iso),
+        ).fetchall()
+
+
+def get_recent_classified_tasks(
+    telegram_id: int,
+    cycle_id: int,
+    since: datetime,
+) -> list[sqlite3.Row]:
+    since_text = since.strftime("%Y-%m-%d %H:%M:%S")
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT * FROM tasks
+               WHERE telegram_id = ? AND cycle_id = ?
+               AND is_ghost = 0
+               AND gmail_id IS NOT NULL
+               AND type IN ('application', 'oa', 'hirevue', 'interview', 'offer', 'rejection')
+               AND (type != 'application' OR status = 'incomplete')
+               AND datetime(COALESCE(updated_at, created_at)) >= datetime(?)
+               ORDER BY COALESCE(email_date, created_at) ASC, id ASC""",
+            (telegram_id, cycle_id, since_text),
+        ).fetchall()
+
+
 def get_applications(telegram_id: int) -> list[sqlite3.Row]:
     with get_connection() as conn:
         return conn.execute(
