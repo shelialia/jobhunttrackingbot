@@ -1,7 +1,7 @@
 from datetime import datetime
-from html import escape
 
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from ..db import cycles as cycles_db, tasks as tasks_db, users
@@ -39,6 +39,10 @@ def _format_interview_stage(row) -> tuple[str, str]:
     if row["round_label"]:
         return "💻", f"Round {round_number}: {label.title()}"
     return "💻", label
+
+
+def _escape_codeblock(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("`", "\\`")
 
 
 async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -86,13 +90,13 @@ async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chain_rows = tasks_db.get_chain_rows(root["id"])
     chain_rows.sort(key=_row_datetime)
 
-    company = escape(root["company"] or "Unknown")
-    role = escape(root["role"] or "")
-    title = f"🏢 <b>{company}</b>"
+    company = root["company"] or "Unknown"
+    role = root["role"] or ""
+    title = f"🏢 {company}"
     if role:
-        title += f" - <i>{role}</i>"
+        title += f" - {role}"
 
-    lines = ["──────────────────────────────────────────"]
+    lines = [title, "──────────────────────────────────────────"]
     for row in chain_rows:
         if row["type"] == "application":
             emoji, label = "✅", "Applied"
@@ -114,7 +118,8 @@ async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         lines.append(f"{emoji} {label:<28} {_format_timeline_date(row)}")
 
+    timeline_content = _escape_codeblock("\n".join(lines))
     await update.message.reply_text(
-        title + "\n<pre>" + escape("\n".join(lines)) + "</pre>",
-        parse_mode="HTML",
+        f"```timeline\n{timeline_content}\n```",
+        parse_mode=ParseMode.MARKDOWN_V2,
     )
