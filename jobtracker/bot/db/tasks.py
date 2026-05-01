@@ -65,6 +65,18 @@ def find_application_for_linking(telegram_id: int, company: str, role: str, cycl
     )
 
 
+def find_existing_application(
+    telegram_id: int,
+    company: str,
+    role: str,
+    cycle_id: Optional[int] = None,
+    include_ghost: bool = True,
+) -> Optional[int]:
+    return _find_matching_application(
+        telegram_id, company, role, cycle_id=cycle_id, include_ghost=include_ghost
+    )
+
+
 def find_or_create_application_for_linking(
     telegram_id: int,
     company: str,
@@ -241,6 +253,8 @@ def merge_application_email(
     gmail_id: str,
     company: str,
     role: str,
+    deadline: Optional[str] = None,
+    link: Optional[str] = None,
     email_date: Optional[str] = None,
 ) -> None:
     company_n = _normalise(company)
@@ -254,6 +268,8 @@ def merge_application_email(
                    company_normalised = ?,
                    role = ?,
                    role_normalised = ?,
+                   deadline = COALESCE(deadline, ?),
+                   link = COALESCE(link, ?),
                    email_date = CASE
                        WHEN ? IS NULL THEN email_date
                        WHEN email_date IS NULL THEN ?
@@ -269,6 +285,8 @@ def merge_application_email(
                 company_n,
                 role,
                 role_n,
+                deadline,
+                link,
                 email_date,
                 email_date,
                 email_date,

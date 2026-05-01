@@ -82,37 +82,28 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
 
         source_application_id = None
         if task_type == "application":
-            existing_application_id = tasks_db.find_or_create_application_for_linking(
+            existing_application_id = tasks_db.find_existing_application(
                 telegram_id,
                 company,
                 role,
                 cycle_id=cycle_id,
-                email_date=email_date,
-                is_ghost_if_missing=0,
             )
-            if existing_application_id is None:
-                continue
-
-            existing_application = tasks_db.get_task_by_id(existing_application_id)
-            if existing_application and existing_application["gmail_id"] != gmail_id:
-                if existing_application["email_date"] is None or existing_application["is_ghost"]:
-                    tasks_db.merge_application_email(
-                        existing_application_id,
-                        gmail_id,
-                        company,
-                        role,
-                        email_date=email_date,
-                    )
-                    items.append((company, task_type, role, email_date, confidence < 0.7))
+            if existing_application_id is not None:
+                existing_application = tasks_db.get_task_by_id(existing_application_id)
+                if existing_application is None:
+                    continue
+                if existing_application["gmail_id"] == gmail_id:
                     continue
 
-                task_id = tasks_db.insert_task(
-                    telegram_id, gmail_id, task_type,
-                    company, role, deadline, link, None,
-                    email_date=email_date, cycle_id=cycle_id,
+                tasks_db.merge_application_email(
+                    existing_application_id,
+                    gmail_id,
+                    company,
+                    role,
+                    deadline=deadline,
+                    link=link,
+                    email_date=email_date,
                 )
-                if task_id is None:
-                    continue
                 items.append((company, task_type, role, email_date, confidence < 0.7))
                 continue
 
