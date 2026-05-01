@@ -17,7 +17,6 @@ HELP_TEXT = """
 /offer &lt;app_number&gt; — Mark an application as an offer
 /reject &lt;app_number&gt; — Mark an application as rejected
 /remove &lt;task_number or app_number&gt; — Delete a task or application
-/confirm — Confirm a pending action
 
 ✏️ <b>Management</b>
 /scan — Scan Gmail for new tasks
@@ -27,7 +26,6 @@ HELP_TEXT = """
 🔄 <b>Cycles</b>
 /cycles — View all your cycles
 /newcycle — Start a new cycle
-/endcycle — End the current cycle
 /switchcycle — Switch to a different cycle
 
 /help — Show this message

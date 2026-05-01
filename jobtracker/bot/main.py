@@ -25,7 +25,6 @@ from .commands.remove import remove
 from .commands.help import help_cmd
 from .commands.cycles import cycles_cmd
 from .commands.newcycle import newcycle
-from .commands.endcycle import endcycle
 from .commands.switchcycle import switchcycle
 from .commands.cycle_callbacks import handle_cycle_callback
 from .commands.text_input import handle_text_message
@@ -48,12 +47,10 @@ _COMMANDS = [
     BotCommand("offer", "Mark an application as an offer"),
     BotCommand("reject", "Mark an application as rejected"),
     BotCommand("remove", "Delete a task"),
-    BotCommand("confirm", "Confirm a pending action"),
     BotCommand("add", "Manually add a task"),
     BotCommand("connect", "Connect your Gmail account"),
     BotCommand("cycles", "View all your cycles"),
     BotCommand("newcycle", "Start a new cycle"),
-    BotCommand("endcycle", "End the current cycle"),
     BotCommand("switchcycle", "Switch to a different cycle"),
     BotCommand("help", "List all commands"),
 ]
@@ -87,7 +84,6 @@ def main() -> None:
     app.add_handler(CommandHandler("remove", remove))
     app.add_handler(CommandHandler("cycles", cycles_cmd))
     app.add_handler(CommandHandler("newcycle", newcycle))
-    app.add_handler(CommandHandler("endcycle", endcycle))
     app.add_handler(CommandHandler("switchcycle", switchcycle))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CallbackQueryHandler(handle_cycle_callback))
