@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 HELP_TEXT = """
-🤖 *Job Hunt Tracker — Commands*
+🤖 *CronJobBot — Commands*
 
 📋 *Tracking*
 /tasks — Assessments & interviews to complete
