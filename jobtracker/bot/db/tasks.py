@@ -219,20 +219,25 @@ def get_task_by_id(task_id: int) -> Optional[sqlite3.Row]:
 
 
 def get_assessment_tasks(telegram_id: int) -> list[sqlite3.Row]:
+    now_iso = datetime.utcnow().isoformat()
     with get_connection() as conn:
         return conn.execute(
             """SELECT * FROM tasks
                WHERE telegram_id = ? AND status = 'incomplete' AND is_ghost = 0
                AND type IN ('oa', 'hirevue', 'interview')
                ORDER BY
-                 CASE WHEN COALESCE(interview_date, deadline) IS NULL THEN 1 ELSE 0 END,
+                 CASE
+                   WHEN COALESCE(interview_date, deadline) IS NULL THEN 0
+                   WHEN COALESCE(interview_date, deadline) < ? THEN 1
+                   ELSE 2
+                 END ASC,
                  COALESCE(interview_date, deadline) ASC,
                  CASE type
                    WHEN 'interview' THEN 0
                    WHEN 'hirevue'   THEN 1
                    WHEN 'oa'        THEN 2
                  END ASC""",
-            (telegram_id,),
+            (telegram_id, now_iso),
         ).fetchall()
 
 
