@@ -760,6 +760,12 @@ def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
         and (deadline_dt := _as_datetime(row["deadline"])) is not None
         and deadline_dt >= now_dt
     }
+    responded_roots = {
+        row["root_id"]
+        for row in chain_rows
+        if row["type"] in ("oa", "hirevue", "interview")
+        and row["root_id"] is not None
+    }
     with get_connection() as conn:
         applied = conn.execute(
             "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type = 'application' AND is_ghost = 0",
@@ -787,13 +793,7 @@ def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
             (telegram_id, cycle_id),
         ).fetchone()[0]
 
-        responded = conn.execute(
-            """SELECT COUNT(DISTINCT source_application_id) FROM tasks
-               WHERE telegram_id = ? AND cycle_id = ?
-               AND type IN ('oa', 'hirevue', 'interview')
-               AND source_application_id IS NOT NULL""",
-            (telegram_id, cycle_id),
-        ).fetchone()[0]
+        responded = len(responded_roots)
 
         avg_days_raw = conn.execute(
             """SELECT AVG(julianday(t.created_at) - julianday(app.created_at))
@@ -821,17 +821,34 @@ def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
 
 def get_user_stats(telegram_id: int) -> dict:
     with get_connection() as conn:
+        chain_rows = conn.execute(
+            """WITH RECURSIVE chain AS (
+                   SELECT id, id AS root_id, type
+                   FROM tasks
+                   WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
+                   UNION ALL
+                   SELECT t.id, c.root_id, t.type
+                   FROM tasks t
+                   JOIN chain c ON t.source_application_id = c.id
+               )
+               SELECT * FROM chain""",
+            (telegram_id,),
+        ).fetchall()
+
+    responded_roots = {
+        row["root_id"]
+        for row in chain_rows
+        if row["type"] in ("oa", "hirevue", "interview")
+        and row["root_id"] is not None
+    }
+
+    with get_connection() as conn:
         total = conn.execute(
             "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0",
             (telegram_id,),
         ).fetchone()[0]
 
-        responded = conn.execute(
-            """SELECT COUNT(DISTINCT source_application_id) FROM tasks
-               WHERE telegram_id = ? AND type IN ('oa', 'hirevue', 'interview')
-               AND source_application_id IS NOT NULL""",
-            (telegram_id,),
-        ).fetchone()[0]
+        responded = len(responded_roots)
 
         offers = conn.execute(
             "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0 AND status = 'offer'",
