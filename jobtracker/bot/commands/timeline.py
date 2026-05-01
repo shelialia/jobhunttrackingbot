@@ -18,6 +18,16 @@ def _format_date(row) -> str:
     return _row_datetime(row).strftime("%d %b").lstrip("0")
 
 
+def _format_timeline_date(row) -> str:
+    if row["type"] == "interview":
+        raw = row["interview_date"]
+        if not raw:
+            return "UNSCHEDULED"
+        dt = raw if isinstance(raw, datetime) else datetime.fromisoformat(raw)
+        return dt.strftime("%d %b").lstrip("0")
+    return _format_date(row)
+
+
 def _format_interview_stage(row) -> tuple[str, str]:
     round_number = row["interview_round"] or 1
     if row["is_final_round"]:
@@ -102,7 +112,7 @@ async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if row["is_ghost"] and row["type"] == "interview":
             label += " (Inferred)"
 
-        lines.append(f"{emoji} {label:<28} {_format_date(row)}")
+        lines.append(f"{emoji} {label:<28} {_format_timeline_date(row)}")
 
     await update.message.reply_text(
         title + "\n<pre>" + escape("\n".join(lines)) + "</pre>",
