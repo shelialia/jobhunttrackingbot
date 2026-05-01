@@ -6,13 +6,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-_model = genai.GenerativeModel("gemini-2.0-flash")
+_model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
 _PROMPT_TEMPLATE = """You are a job application email classifier. Analyse the email below and return ONLY valid JSON — no preamble, no markdown fences.
 
 Output schema:
 {{
-  "type": "oa | hirevue | interview | application | irrelevant",
+  "type": "oa | hirevue | interview | application | rejection | irrelevant",
   "company": "<string or null>",
   "role": "<string or null>",
   "deadline": "<ISO8601 datetime or null>",
@@ -30,6 +30,7 @@ Rules:
 - type = "hirevue"      → a one-way video interview invite (HireVue, Spark Hire, Modern Hire, Montage,
                           or any platform asking you to record video answers to pre-set questions)
 - type = "interview"    → a live interview invite (phone / virtual / on-site) sent during the hiring process
+- type = "rejection"    → a rejection / regret email from the company (not moving forward, application unsuccessful, position filled, "unfortunately")
 - type = "irrelevant"   → classify as irrelevant if ANY of the following are true:
     * not related to a job application
     * the role has already been accepted / offer signed (onboarding, team matching, intern intro calls, mentor meetings, pre-start logistics)

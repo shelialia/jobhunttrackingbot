@@ -7,7 +7,22 @@ from ..gmail.fetch import fetch_new_messages
 from ..gmail.parse import extract_subject_and_body, get_gmail_id, get_email_date
 from ..llm.classify import classify_email
 
-_EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞", "application": "📝"}
+_GROUPS = [
+    ("application",               "📝 Applications Submitted"),
+    (("oa", "hirevue", "interview"), "🎯 Interviews & Assessments"),
+    ("rejection",                 "❌ Rejections"),
+    ("offer",                     "🎉 Offers"),
+]
+
+
+def _format_date(email_date: str | None) -> str:
+    if not email_date:
+        return ""
+    try:
+        dt = datetime.strptime(email_date, "%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%d %b").lstrip("0")
+    except Exception:
+        return ""
 
 
 async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
@@ -24,8 +39,8 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
     last_scanned = datetime(2026, 4, 20)
 
     messages = fetch_new_messages(user["gmail_token_json"], last_scanned)
-    found = []
-    low_confidence = []
+    # each entry: (company, task_type, role, email_date, low_conf)
+    items: list[tuple[str, str, str, str | None, bool]] = []
 
     for msg in messages:
         gmail_id = get_gmail_id(msg)
@@ -64,24 +79,30 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
         if task_id is None:
             continue
 
-        if confidence < 0.7:
-            low_confidence.append((company, task_type, confidence))
-        else:
-            found.append((company, task_type))
+        items.append((company, task_type, role, email_date, confidence < 0.7))
 
     users.update_last_scanned(telegram_id)
 
-    if not found and not low_confidence:
+    if not items:
         text = "✅ Scan complete — no new tasks found."
     else:
-        lines = [f"✅ *Scan complete!* Found *{len(found) + len(low_confidence)}* new item(s):\n"]
-        for company, task_type in found:
-            emoji = _EMOJI.get(task_type, "📌")
-            lines.append(f"{emoji} *{company}* — {task_type.upper()}")
-        for company, task_type, conf in low_confidence:
-            emoji = _EMOJI.get(task_type, "📌")
-            lines.append(f"{emoji} *{company}* — {task_type.upper()} ⚠️ _low confidence ({conf:.0%}) — please verify_")
-        text = "\n".join(lines)
+        lines = ["✅ *Scan complete!*\n"]
+        for type_key, group_label in _GROUPS:
+            if isinstance(type_key, str):
+                group = [i for i in items if i[1] == type_key]
+            else:
+                group = [i for i in items if i[1] in type_key]
+            if not group:
+                continue
+            lines.append(f"{group_label} ({len(group)})")
+            for company, _, role, email_date, low_conf in group:
+                date_str = _format_date(email_date)
+                label = f"{company} — {role}" if role else company
+                suffix = f" ({date_str})" if date_str else ""
+                warn = " ⚠️" if low_conf else ""
+                lines.append(f"- {label}{suffix}{warn}")
+            lines.append("")
+        text = "\n".join(lines).strip()
 
     await bot.send_message(chat_id=telegram_id, text=text, parse_mode="Markdown")
 

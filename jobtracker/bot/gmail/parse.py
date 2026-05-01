@@ -1,6 +1,9 @@
 import base64
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from typing import Optional
+
+_SGT = timezone(timedelta(hours=8))
 
 
 def _decode_part(data: str) -> str:
@@ -35,9 +38,13 @@ def get_gmail_id(message: dict) -> Optional[str]:
 
 
 def get_email_date(message: dict) -> Optional[str]:
-    """Return the email's received date as an ISO 8601 string, or None."""
-    ms = message.get("internalDate")
-    if not ms:
+    """Return the email's sent date in SGT as a YYYY-MM-DD HH:MM:SS string, or None."""
+    headers = message.get("payload", {}).get("headers", [])
+    date_str = next((h["value"] for h in headers if h["name"] == "Date"), None)
+    if not date_str:
         return None
-    dt = datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc)
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        dt = parsedate_to_datetime(date_str).astimezone(_SGT)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
