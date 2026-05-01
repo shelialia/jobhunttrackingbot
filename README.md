@@ -1,21 +1,87 @@
 # Job Hunt Tracker Bot
 
-A Telegram bot that monitors your Gmail inbox for job application to-dos — online assessments, HireVues, interview invites — stores them in SQLite and sends a daily digest.
+A self-hosted Telegram bot that scans Gmail for job application updates, classifies them with an LLM, stores the workflow in SQLite, and gives you a compact command-based view of your funnel.
 
-Bring your own API keys and run your own instance.
+This project is designed for open-source + BYOK use:
+- bring your own Telegram bot token
+- bring your own Google OAuth credentials
+- bring your own Gemini API key
+- run your own bot instance and keep your own Gmail tokens/data
+
+---
+
+## What it does
+
+- Scans Gmail for:
+  - application confirmations
+  - online assessments
+  - HireVue / one-way video interviews
+  - live interview invites
+  - offers
+  - rejections
+- Builds a linked application chain in SQLite:
+  - `application -> oa -> interview -> offer`
+  - `application -> interview -> rejection`
+  - etc.
+- Deduplicates repeated scans by Gmail message id
+- Creates ghost application anchors when a follow-up email arrives before the original application confirmation
+- Tracks interview rounds, final rounds, interview dates, and platforms
+- Sends a daily digest
+- Exposes Telegram commands for tasks, stats, timelines, and a funnel Sankey diagram
+
+---
+
+## Current command surface
+
+Visible Telegram commands:
+
+- `/start` - set up your account
+- `/connect` - connect Gmail
+- `/scan` - manually scan Gmail now
+- `/tasks` - pending assessments and interviews
+- `/applied` - all applications in the active cycle
+- `/timeline <app_number>` - full chain for one application
+- `/upcoming` - items due in the next 7 days
+- `/stats` - active-cycle stats
+- `/sankey` - export funnel Sankey diagram
+- `/done <task_number>` - mark a task done
+- `/offer <app_number>` - mark an application as offered
+- `/reject <app_number>` - mark an application as rejected
+- `/remove <task_number or app_number>` - delete an application or task
+- `/add <company> [date] [type]` - add a task manually
+- `/cycles` - view cycles
+- `/newcycle` - start a new cycle
+- `/switchcycle` - switch cycles
+- `/help`
+
+Internal confirmation flows still use `/confirm`, but it is not advertised in the command menu.
 
 ---
 
 ## Features
 
-- Detects OAs, HireVue invites, interview invites, offer emails, and application confirmations from Gmail
-- Classifies emails using Gemini Flash 2.0 (free tier, 1500 req/day)
-- Daily digest at 09:00 SGT
-- `/scan` to manually trigger an inbox poll
-- `/tasks`, `/applied`, `/upcoming`, `/stats` to view your pipeline
-- `/done`, `/add`, `/remove` to manage tasks
-- Deduplication by Gmail message ID — safe to scan repeatedly
-- Privacy notice + explicit `/confirm` before any Gmail access
+- Gmail OAuth login flow with local Flask callback server
+- BYOK LLM classification using `gemma-4-31b-it`
+- Manual scan summary grouped into:
+  - applications submitted
+  - pending assessments
+  - interviews
+  - offers / rejections when present
+- Daily digest with the same grouping
+- Interview chain tracking:
+  - round number
+  - final-round flag
+  - round label
+  - confirmed interview datetime
+  - interview platform
+- `/timeline` output for one application chain
+- `/sankey` PNG export with:
+  - application / OA / HireVue / interview-round / offer / rejection / ghosted / pending nodes
+- Safe chunking for long bot outputs so large lists do not exceed Telegram message limits
+- Singapore-time reminder labels for:
+  - `TODAY`
+  - `Xd remaining`
+  - `OVERDUE`
 
 ---
 
@@ -24,46 +90,47 @@ Bring your own API keys and run your own instance.
 | Layer | Choice |
 |---|---|
 | Language | Python 3.11+ |
-| Telegram | python-telegram-bot v20 (async) |
+| Telegram | python-telegram-bot v20 |
 | Scheduler | APScheduler 3.x |
-| Email | Gmail API via google-auth-oauthlib |
-| LLM | Gemini Flash 2.0 |
+| Email | Gmail API |
+| LLM client | `google-generativeai` |
+| Model | `gemma-4-31b-it` |
 | Database | SQLite |
 | OAuth callback | Flask |
+| Diagram export | Plotly + Kaleido |
 
 ---
 
 ## Prerequisites
 
-You need accounts and API keys from four services before running this bot.
+You need credentials from three services.
 
 ### 1. Telegram bot token
 
 1. Open Telegram and message [@BotFather](https://t.me/BotFather)
-2. Send `/newbot` and follow the prompts
-3. Copy the token — this is your `TELEGRAM_BOT_TOKEN`
+2. Run `/newbot`
+3. Copy the token as `TELEGRAM_BOT_TOKEN`
 
 ### 2. Google OAuth credentials
 
-The bot reads Gmail via OAuth 2.0. Each person who runs the bot needs to authorise it once through a browser.
+The bot reads Gmail through OAuth 2.0.
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create a new project
-2. Enable the **Gmail API**: APIs & Services → Enable APIs → search "Gmail API"
-3. Go to APIs & Services → **Credentials** → Create Credentials → **OAuth client ID**
-4. Choose **Web application**
-5. Under **Authorised redirect URIs**, add your callback URL:
-   - Local dev: `http://localhost:5001/oauth/callback`
-   - Self-hosted: `http://YOUR_SERVER_IP:5001/oauth/callback`
-6. Copy the **Client ID** and **Client Secret**
-7. Go to APIs & Services → **OAuth consent screen**:
-   - Set User Type to **External**
-   - Add your Gmail address as a **Test user** (required while the app is in testing mode)
+1. Create a project in Google Cloud Console
+2. Enable the Gmail API
+3. Create an OAuth client id of type **Web application**
+4. Add an authorized redirect URI:
+   - local dev: `http://localhost:5001/oauth/callback`
+   - self-hosted: `http://YOUR_HOST:5001/oauth/callback`
+5. Copy:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+6. Add your Gmail account as a test user if the app is still in testing mode
 
 ### 3. Gemini API key
 
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Create an API key — this is your `GEMINI_API_KEY`
-3. Free tier gives 1500 requests/day, which is sufficient for personal use
+1. Go to Google AI Studio
+2. Create an API key
+3. Use it as `GEMINI_API_KEY`
 
 ---
 
@@ -74,133 +141,231 @@ git clone https://github.com/shelialia/jobhunttrackingbot.git
 cd jobhunttrackingbot
 
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Copy the example env file and fill in your keys:
+Create `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Example values:
 
-```
-TELEGRAM_BOT_TOKEN=your_token_here
-GOOGLE_CLIENT_ID=your_client_id_here
-GOOGLE_CLIENT_SECRET=your_client_secret_here
+```env
+TELEGRAM_BOT_TOKEN=your_telegram_token
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
 OAUTH_REDIRECT_URI=http://localhost:5001/oauth/callback
-GEMINI_API_KEY=your_gemini_key_here
+GEMINI_API_KEY=your_gemini_api_key
 DB_PATH=data/jobtracker.db
 FLASK_DEBUG=false
 ```
 
-### Running locally
+Run two processes.
 
-The bot and the OAuth server are two separate processes. Run each in its own terminal:
+Terminal 1:
 
-**Terminal 1 — OAuth callback server:**
 ```bash
 python -m jobtracker.oauth_server.app
 ```
 
-**Terminal 2 — Telegram bot:**
+Terminal 2:
+
 ```bash
 python -m jobtracker.bot.main
 ```
 
-Then open Telegram and send `/start` to your bot.
-
-> **Note:** Gmail OAuth requires Google to redirect back to your `OAUTH_REDIRECT_URI` after the user authorises access. Locally, this works fine as long as you're authorising from the same machine. If you're running the bot on a remote server without a domain, use [ngrok](https://ngrok.com/) to expose port 5001 and update `OAUTH_REDIRECT_URI` accordingly.
+Then open Telegram and run `/start`.
 
 ---
 
-## Self-hosting (spare laptop / home server)
+## Self-hosting
 
-Same setup as above. To keep both processes running after you close the terminal:
+You can run the same two processes on a spare laptop, VM, or home server.
+
+Example with `nohup`:
 
 ```bash
-# Run both as background processes with logs
 nohup python -m jobtracker.oauth_server.app > logs/oauth.log 2>&1 &
 nohup python -m jobtracker.bot.main > logs/bot.log 2>&1 &
 ```
 
-Or use a process manager like [PM2](https://pm2.keymetrics.io/) (works with Python):
+Example with PM2:
 
 ```bash
 npm install -g pm2
 pm2 start "python -m jobtracker.oauth_server.app" --name oauth
 pm2 start "python -m jobtracker.bot.main" --name bot
 pm2 save
-pm2 startup  # auto-restart on reboot
+pm2 startup
 ```
+
+If your OAuth callback is not reachable directly, expose port `5001` with a tunnel such as ngrok and update `OAUTH_REDIRECT_URI`.
+
+---
+
+## How scanning works
+
+### Scan window
+
+- First manual `/scan` for a new cycle:
+  - scans the last 14 days
+- Later scans:
+  - use `max(last_scan_timestamp, now - 24 hours)`
+- Both manual scans and auto scans write the latest successful scan timestamp back to the database
+
+### Scan pipeline
+
+1. Fetch Gmail messages since the current scan window start
+2. Parse subject, body, Gmail id, and email date
+3. Classify each email with the LLM into structured JSON
+4. Skip `irrelevant`
+5. Link the email into the existing application chain
+6. Insert or update the right task row
+7. Send a grouped scan summary back to Telegram
+
+### Linking rules
+
+- application confirmations create or update the root application row
+- OA / HireVue / interview / offer / rejection follow-ups attach to the latest relevant stage in the existing chain when possible
+- if no application exists yet, a ghost application anchor is created
+- interview confirmations update the existing round instead of creating a new round
+
+---
+
+## Data model
+
+The main table is `tasks`. It stores both:
+- root application rows
+- follow-up task/event rows
+
+Important fields:
+
+- `type`
+  - `application`
+  - `oa`
+  - `hirevue`
+  - `interview`
+  - `offer`
+  - `rejection`
+- `source_application_id`
+  - parent pointer used to build the chain
+- `is_ghost`
+  - marks inferred application/interview anchors
+- `interview_round`
+- `is_final_round`
+- `round_label`
+- `interview_date`
+- `interview_platform`
+- `confirmed_at`
+
+Example chain:
+
+```text
+application
+  -> oa
+    -> interview round 1
+      -> interview round 2
+        -> offer
+```
+
+---
+
+## Output behavior
+
+### `/tasks`
+
+Sorted in this order:
+1. unscheduled
+2. overdue
+3. future scheduled items by soonest date
+
+For interviews:
+- no confirmed interview time -> `UNSCHEDULED`
+- confirmed interview time -> uses `interview_date`
+
+### `/upcoming`
+
+Shows incomplete items due within the next 7 days.
+
+For interviews:
+- uses `interview_date`
+- unscheduled interviews do not appear there
+
+### `/timeline`
+
+Shows one application chain in chronological order.
+
+Examples:
+- `✅ Applied`
+- `📝 OA`
+- `📞 Round 1: Phone Screen`
+- `🏁 Round 2: Final Round`
+- `🎉 Offer`
+- `❌ Rejection`
+
+### `/sankey`
+
+Exports a PNG funnel diagram.
+
+Interview rounds render as separate nodes:
+- `1st Interview`
+- `2nd Interview`
+- `3rd Interview`
+
+Terminal nodes include:
+- `Offer`
+- `Rejection`
+- `Ghosted`
+- `Pending`
 
 ---
 
 ## Project structure
 
-```
+```text
 jobtracker/
 ├── bot/
-│   ├── main.py              # Entry point — starts bot + scheduler
-│   ├── commands/            # One file per bot command
-│   ├── scheduler/
-│   │   └── digest.py        # Daily 09:00 SGT digest
+│   ├── main.py
+│   ├── message_utils.py
+│   ├── time_utils.py
+│   ├── commands/
+│   ├── db/
 │   ├── gmail/
-│   │   ├── auth.py          # OAuth2 URL generation + token refresh
-│   │   ├── fetch.py         # Gmail API fetch
-│   │   └── parse.py         # Extract subject + body from raw message
 │   ├── llm/
-│   │   └── classify.py      # Gemini call — classify email, extract fields
-│   └── db/
-│       ├── schema.py        # CREATE TABLE + migrations
-│       ├── users.py         # User CRUD
-│       └── tasks.py         # Task CRUD + dedup + linking
+│   └── scheduler/
 └── oauth_server/
-    └── app.py               # Flask callback — receives OAuth code from Google
 ```
 
 ---
 
-## How the scan pipeline works
+## Known behavior and constraints
 
-1. Fetch emails from Gmail using the current local testing window filtered by job-related subject keywords
-2. Skip any email whose `gmail_id` is already in the database (dedup)
-3. Send subject + body to Gemini — get back structured JSON (type, company, role, deadline, link)
-4. Skip emails classified as `irrelevant`; emails with confidence < 0.7 are still inserted but flagged with a warning in the scan reply
-5. Insert task row; for OA/HireVue/interview, fuzzy-match against existing application rows by company (exact) + role (rapidfuzz partial\_ratio ≥ 80) to set `source_application_id`. If no matching application exists, create a ghost application row and link to that.
-6. For offer/rejection emails, create a deduped outcome event row and update the linked application status so `/stats` stays in sync.
-7. Update `last_scanned_at`
+- LLM calls are synchronous on purpose right now
+- there is an explicit inter-email sleep in scan flow to stay within low-cost usage
+- reminder labels are shown in Singapore time
+- the daily digest job is scheduled at `01:00` in the host machine's scheduler timezone
+- this is designed for self-hosted/BYOK use, not a hosted multi-tenant SaaS
 
 ---
 
 ## Contributing
 
-Contributions are welcome. A few things to know before you start:
+Contributions are welcome, but the project is opinionated in a few places:
 
-- The project uses Python 3.11+. Keep it async — `python-telegram-bot` v20 runs on a single asyncio event loop.
-- The LLM call in `llm/classify.py` is currently synchronous and blocks the event loop. This is a known issue — if you're fixing multi-user concurrency, the right fix is `generate_content_async()` with a global `asyncio.Semaphore`.
-- Deduplication is enforced at the database level via a unique index on `(telegram_id, gmail_id)`. Do not remove or work around this.
-- `_normalise()` in `db/tasks.py` is used for company/role matching — changes there affect dedup and linking logic. Company matching is exact on the normalised string; role matching uses `rapidfuzz.fuzz.partial_ratio` with a threshold of 80.
-- `/scan` is intentionally not incremental right now while local classification testing is in progress. It uses a hardcoded lower bound in `commands/scan.py`.
+- privacy-sensitive flows should stay self-host friendly
+- dedup/linking behavior matters more than cosmetic refactors
+- follow-up stages should attach to the latest valid chain stage
+- interview confirmation emails should update the existing round, not create new ones
 
-To contribute:
-1. Fork the repo
-2. Create a branch: `git checkout -b fix/your-fix-name`
-3. Make your changes and test locally
-4. Open a pull request with a clear description of what and why
+If you open a PR, describe:
+- the bug
+- the expected chain behavior
+- the before/after DB shape if the fix affects linking
 
----
-
-## Known limitations
-
-- LLM calls are synchronous — blocks the event loop under concurrent load (single-user use is fine)
-- No per-user notification timezone (digest hardcoded to 01:00 UTC / 09:00 SGT)
-- No per-user fuzzy company matching — company lookup is exact on the normalised string; only role matching is fuzzy
-- Gmail scope is read-only but all matching emails are sent to Gemini; unrelated emails may occasionally be processed
-- Single Gemini API key shared across all users of an instance
+For current engineering notes, testing coverage, bug history, and planned work, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ---
 
