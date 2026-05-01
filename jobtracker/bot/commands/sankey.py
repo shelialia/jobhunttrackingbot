@@ -7,27 +7,69 @@ from telegram.ext import ContextTypes
 from ..db import cycles as cycles_db, tasks as tasks_db, users
 
 
-_NODE_ORDER = ["application", "oa", "hirevue", "interview", "offer", "rejection", "ghosted", "pending"]
 _NODE_COLORS = {
     "application": "#3b82f6",
     "oa": "#f97316",
     "hirevue": "#8b5cf6",
-    "interview": "#14b8a6",
     "offer": "#22c55e",
     "rejection": "#ef4444",
     "ghosted": "#808080",
     "pending": "#F0A500",
 }
-_NODE_LABELS = {
-    "application": "Application",
-    "oa": "OA",
-    "hirevue": "HireVue",
-    "interview": "Interview",
-    "offer": "Offer",
-    "rejection": "Rejection",
-    "ghosted": "Ghosted",
-    "pending": "Pending",
-}
+_INTERVIEW_COLOR = "#14b8a6"
+
+
+def _ordinal(n: int) -> str:
+    if 10 <= (n % 100) <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _node_label(node: str) -> str:
+    if node.startswith("interview_"):
+        try:
+            round_number = int(node.split("_", 1)[1])
+        except (IndexError, ValueError):
+            return "Interview"
+        return f"{_ordinal(round_number)} Interview"
+
+    labels = {
+        "application": "Application",
+        "oa": "OA",
+        "hirevue": "HireVue",
+        "offer": "Offer",
+        "rejection": "Rejection",
+        "ghosted": "Ghosted",
+        "pending": "Pending",
+    }
+    return labels.get(node, node.title())
+
+
+def _node_color(node: str) -> str:
+    if node.startswith("interview_"):
+        return _INTERVIEW_COLOR
+    return _NODE_COLORS[node]
+
+
+def _node_sort_key(node: str) -> tuple[int, int]:
+    order = {
+        "application": 0,
+        "oa": 1,
+        "hirevue": 2,
+        "offer": 100,
+        "rejection": 101,
+        "ghosted": 102,
+        "pending": 103,
+    }
+    if node.startswith("interview_"):
+        try:
+            round_number = int(node.split("_", 1)[1])
+        except (IndexError, ValueError):
+            round_number = 1
+        return (3 + round_number, round_number)
+    return (order.get(node, 999), 0)
 
 
 async def sankey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -55,28 +97,29 @@ async def sankey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     edges = tasks_db.get_sankey_edges(telegram_id, cycle["id"])
+    nodes = sorted({node for edge in edges for node in edge[:2]}, key=_node_sort_key)
 
-    node_indices = {label: idx for idx, label in enumerate(_NODE_ORDER)}
+    node_indices = {label: idx for idx, label in enumerate(nodes)}
     source_indices = [node_indices[source] for source, _, _ in edges]
     target_indices = [node_indices[target] for _, target, _ in edges]
     flow_values = [flow for _, _, flow in edges]
-    outgoing_counts = {label: 0 for label in _NODE_ORDER}
-    incoming_counts = {label: 0 for label in _NODE_ORDER}
+    outgoing_counts = {label: 0 for label in nodes}
+    incoming_counts = {label: 0 for label in nodes}
     for source, target, flow in edges:
         outgoing_counts[source] += flow
         incoming_counts[target] += flow
 
     node_labels = []
-    for label in _NODE_ORDER:
+    for label in nodes:
         count = outgoing_counts[label] if outgoing_counts[label] else incoming_counts[label]
-        node_labels.append(f"{_NODE_LABELS[label]} ({count})")
+        node_labels.append(f"{_node_label(label)} ({count})")
 
     fig = go.Figure(
         go.Sankey(
             domain=dict(x=[0.0, 1.0], y=[0.0, 1.0]),
             node=dict(
                 label=node_labels,
-                color=[_NODE_COLORS[label] for label in _NODE_ORDER],
+                color=[_node_color(label) for label in nodes],
                 pad=15,
                 thickness=20,
             ),

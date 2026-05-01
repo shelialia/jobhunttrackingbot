@@ -568,12 +568,13 @@ def ensure_interview_chain(
     telegram_id: int,
     cycle_id: int,
     root_application_id: int,
+    chain_parent_id: int,
     company: str,
     role: str,
     interview_round: int,
 ) -> Optional[int]:
     if interview_round <= 1:
-        return root_application_id
+        return chain_parent_id
 
     previous = get_interview_by_round(root_application_id, interview_round - 1)
     if previous is not None:
@@ -583,6 +584,7 @@ def ensure_interview_chain(
         telegram_id,
         cycle_id,
         root_application_id,
+        chain_parent_id,
         company,
         role,
         interview_round - 1,
@@ -626,6 +628,49 @@ def get_chain_rows(root_application_id: int) -> list[sqlite3.Row]:
                ORDER BY COALESCE(email_date, created_at) ASC, id ASC""",
             (root_application_id,),
         ).fetchall()
+
+
+def get_latest_chain_stage(root_application_id: int) -> Optional[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute(
+            """WITH RECURSIVE chain AS (
+                   SELECT
+                       id,
+                       type,
+                       source_application_id,
+                       0 AS depth,
+                       email_date,
+                       created_at
+                   FROM tasks
+                   WHERE id = ?
+                   UNION ALL
+                   SELECT
+                       t.id,
+                       t.type,
+                       t.source_application_id,
+                       c.depth + 1,
+                       t.email_date,
+                       t.created_at
+                   FROM tasks t
+                   JOIN chain c ON t.source_application_id = c.id
+               )
+               SELECT *
+               FROM chain
+               WHERE type IN ('oa', 'hirevue', 'interview')
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM tasks child
+                     WHERE child.source_application_id = chain.id
+                       AND child.type IN ('oa', 'hirevue', 'interview')
+                 )
+               ORDER BY depth DESC, COALESCE(email_date, created_at) DESC, id DESC
+               LIMIT 1""",
+            (root_application_id,),
+        ).fetchone()
+
+
+def get_latest_chain_stage_for_outcome(root_application_id: int) -> Optional[sqlite3.Row]:
+    return get_latest_chain_stage(root_application_id)
 
 
 def _get_cycle_chain_rows(telegram_id: int, cycle_id: int) -> list[sqlite3.Row]:
@@ -685,7 +730,8 @@ def get_sankey_edges(telegram_id: int, cycle_id: int) -> list[tuple[str, str, in
                        id,
                        id AS root_id,
                        type,
-                       source_application_id
+                       source_application_id,
+                       interview_round
                    FROM tasks
                    WHERE type = 'application'
                      AND cycle_id = ?
@@ -695,21 +741,42 @@ def get_sankey_edges(telegram_id: int, cycle_id: int) -> list[tuple[str, str, in
                        t.id,
                        c.root_id,
                        t.type,
-                       t.source_application_id
+                       t.source_application_id,
+                       t.interview_round
                    FROM tasks t
                    JOIN chain c ON t.source_application_id = c.id
                    WHERE t.type != 'irrelevant'
                )
                , edges AS (
-                   SELECT p.type AS source, c.type AS target, COUNT(*) AS flow
+                   SELECT
+                       CASE
+                           WHEN p.type = 'interview' THEN 'interview_' || COALESCE(p.interview_round, 1)
+                           ELSE p.type
+                       END AS source,
+                       CASE
+                           WHEN c.type = 'interview' THEN 'interview_' || COALESCE(c.interview_round, 1)
+                           ELSE c.type
+                       END AS target,
+                       COUNT(*) AS flow
                    FROM chain c
                    JOIN chain p ON c.source_application_id = p.id AND c.root_id = p.root_id
                    WHERE c.type != 'irrelevant'
-                   GROUP BY p.type, c.type
+                   GROUP BY
+                       CASE
+                           WHEN p.type = 'interview' THEN 'interview_' || COALESCE(p.interview_round, 1)
+                           ELSE p.type
+                       END,
+                       CASE
+                           WHEN c.type = 'interview' THEN 'interview_' || COALESCE(c.interview_round, 1)
+                           ELSE c.type
+                       END
                )
                , terminal_edges AS (
                    SELECT
-                       c.type AS source,
+                       CASE
+                           WHEN c.type = 'interview' THEN 'interview_' || COALESCE(c.interview_round, 1)
+                           ELSE c.type
+                       END AS source,
                        CASE
                            WHEN c.type IN ('oa', 'hirevue', 'interview') THEN 'pending'
                            ELSE 'ghosted'
@@ -724,7 +791,10 @@ def get_sankey_edges(telegram_id: int, cycle_id: int) -> list[tuple[str, str, in
                            AND t.type != 'irrelevant'
                      )
                    GROUP BY
-                       c.type,
+                       CASE
+                           WHEN c.type = 'interview' THEN 'interview_' || COALESCE(c.interview_round, 1)
+                           ELSE c.type
+                       END,
                        CASE
                            WHEN c.type IN ('oa', 'hirevue', 'interview') THEN 'pending'
                            ELSE 'ghosted'

@@ -235,6 +235,8 @@ async def _run_scan(
             if root_application_id is None:
                 continue
             root_application_id = tasks_db.get_root_application_id(root_application_id) or root_application_id
+            latest_stage = tasks_db.get_latest_chain_stage(root_application_id)
+            chain_parent_id = latest_stage["id"] if latest_stage is not None else root_application_id
             interview_round = determine_interview_round(
                 interview_round,
                 is_final_round,
@@ -256,6 +258,7 @@ async def _run_scan(
                         telegram_id,
                         cycle_id,
                         root_application_id,
+                        chain_parent_id,
                         company,
                         role,
                         interview_round,
@@ -279,23 +282,35 @@ async def _run_scan(
                 items.append((company, task_type, role, email_date, confidence < 0.7))
                 continue
 
-            source_application_id = tasks_db.ensure_interview_chain(
-                telegram_id,
-                cycle_id,
-                root_application_id,
-                company,
-                role,
-                interview_round,
-            )
-            if source_application_id is None:
-                continue
+            if interview_round == 1:
+                source_application_id = chain_parent_id
+            else:
+                source_application_id = tasks_db.ensure_interview_chain(
+                    telegram_id,
+                    cycle_id,
+                    root_application_id,
+                    chain_parent_id,
+                    company,
+                    role,
+                    interview_round,
+                )
+                if source_application_id is None:
+                    continue
 
         if task_type in ("oa", "hirevue"):
-            source_application_id = tasks_db.find_or_create_application_for_linking(
+            root_application_id = tasks_db.find_or_create_application_for_linking(
                 telegram_id, company, role, cycle_id=cycle_id, email_date=email_date
             )
+            if root_application_id is None:
+                continue
+            root_application_id = (
+                tasks_db.get_root_application_id(root_application_id)
+                or root_application_id
+            )
+            latest_stage = tasks_db.get_latest_chain_stage(root_application_id)
+            source_application_id = latest_stage["id"] if latest_stage is not None else root_application_id
         elif task_type in ("offer", "rejection"):
-            source_application_id = tasks_db.find_or_create_application_for_linking(
+            root_application_id = tasks_db.find_or_create_application_for_linking(
                 telegram_id,
                 company,
                 role,
@@ -303,8 +318,14 @@ async def _run_scan(
                 email_date=email_date,
                 is_ghost_if_missing=1,
             )
-            if source_application_id is None:
+            if root_application_id is None:
                 continue
+            root_application_id = (
+                tasks_db.get_root_application_id(root_application_id)
+                or root_application_id
+            )
+            latest_stage = tasks_db.get_latest_chain_stage_for_outcome(root_application_id)
+            source_application_id = latest_stage["id"] if latest_stage is not None else root_application_id
 
             task_id = tasks_db.insert_task(
                 telegram_id,
@@ -323,7 +344,7 @@ async def _run_scan(
                 continue
 
             tasks_db.mark_status(
-                source_application_id,
+                root_application_id,
                 "offer" if task_type == "offer" else "rejected",
             )
             items.append((company, task_type, role, email_date, confidence < 0.7))
