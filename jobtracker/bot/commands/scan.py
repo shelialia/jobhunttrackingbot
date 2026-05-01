@@ -33,6 +33,13 @@ def _format_scan_item(company: str, role: str, email_date: str | None, low_conf:
     return "".join(parts)
 
 
+def _message_sort_key(message: dict) -> tuple[int, str]:
+    email_date = get_email_date(message)
+    if not email_date:
+        return (1, "")
+    return (0, email_date)
+
+
 async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
     cycle = cycles_db.get_active_cycle(telegram_id)
     if not cycle:
@@ -47,6 +54,7 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
     last_scanned = datetime(2026, 4, 20)
 
     messages = fetch_new_messages(user["gmail_token_json"], last_scanned)
+    messages.sort(key=_message_sort_key)
     # each entry: (company, task_type, role, email_date, low_conf)
     items: list[tuple[str, str, str, str | None, bool]] = []
 
@@ -73,6 +81,41 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
         link = result.get("link")
 
         source_application_id = None
+        if task_type == "application":
+            existing_application_id = tasks_db.find_or_create_application_for_linking(
+                telegram_id,
+                company,
+                role,
+                cycle_id=cycle_id,
+                email_date=email_date,
+                is_ghost_if_missing=0,
+            )
+            if existing_application_id is None:
+                continue
+
+            existing_application = tasks_db.get_task_by_id(existing_application_id)
+            if existing_application and existing_application["gmail_id"] != gmail_id:
+                if existing_application["email_date"] is None or existing_application["is_ghost"]:
+                    tasks_db.merge_application_email(
+                        existing_application_id,
+                        gmail_id,
+                        company,
+                        role,
+                        email_date=email_date,
+                    )
+                    items.append((company, task_type, role, email_date, confidence < 0.7))
+                    continue
+
+                task_id = tasks_db.insert_task(
+                    telegram_id, gmail_id, task_type,
+                    company, role, deadline, link, None,
+                    email_date=email_date, cycle_id=cycle_id,
+                )
+                if task_id is None:
+                    continue
+                items.append((company, task_type, role, email_date, confidence < 0.7))
+                continue
+
         if task_type in ("oa", "hirevue", "interview"):
             source_application_id = tasks_db.find_or_create_application_for_linking(
                 telegram_id, company, role, cycle_id=cycle_id, email_date=email_date

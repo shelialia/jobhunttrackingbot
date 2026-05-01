@@ -16,30 +16,35 @@ def _normalise(text: str) -> str:
     return text
 
 
-def find_application_for_linking(telegram_id: int, company: str, role: str, cycle_id: Optional[int] = None) -> Optional[int]:
-    """Return the most recent real application for this company with the best fuzzy role match, or None."""
+def _find_matching_application(
+    telegram_id: int,
+    company: str,
+    role: str,
+    cycle_id: Optional[int] = None,
+    include_ghost: bool = False,
+) -> Optional[int]:
     from rapidfuzz import fuzz
+
     company_n = _normalise(company)
     role_n = _normalise(role)
     cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
 
+    query = """SELECT id, role_normalised FROM tasks
+               WHERE telegram_id = ? AND type = 'application'
+               AND company_normalised = ? AND created_at >= ?"""
+    params: list[object] = [telegram_id, company_n, cutoff]
+
+    if cycle_id is not None:
+        query += " AND cycle_id = ?"
+        params.append(cycle_id)
+
+    if not include_ghost:
+        query += " AND is_ghost = 0"
+
+    query += " ORDER BY created_at DESC"
+
     with get_connection() as conn:
-        if cycle_id is not None:
-            candidates = conn.execute(
-                """SELECT id, role_normalised FROM tasks
-                   WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
-                   AND company_normalised = ? AND created_at >= ? AND cycle_id = ?
-                   ORDER BY created_at DESC""",
-                (telegram_id, company_n, cutoff, cycle_id),
-            ).fetchall()
-        else:
-            candidates = conn.execute(
-                """SELECT id, role_normalised FROM tasks
-                   WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
-                   AND company_normalised = ? AND created_at >= ?
-                   ORDER BY created_at DESC""",
-                (telegram_id, company_n, cutoff),
-            ).fetchall()
+        candidates = conn.execute(query, tuple(params)).fetchall()
 
     if not candidates:
         return None
@@ -51,6 +56,13 @@ def find_application_for_linking(telegram_id: int, company: str, role: str, cycl
             best_score, best_id = score, row["id"]
 
     return best_id if best_score >= 80 else None
+
+
+def find_application_for_linking(telegram_id: int, company: str, role: str, cycle_id: Optional[int] = None) -> Optional[int]:
+    """Return the most recent real application for this company with the best fuzzy role match, or None."""
+    return _find_matching_application(
+        telegram_id, company, role, cycle_id=cycle_id, include_ghost=False
+    )
 
 
 def find_or_create_application_for_linking(
@@ -65,36 +77,10 @@ def find_or_create_application_for_linking(
     if app_id is not None:
         return app_id
 
-    from rapidfuzz import fuzz
-    company_n = _normalise(company)
-    role_n = _normalise(role)
-    cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
-
-    with get_connection() as conn:
-        if cycle_id is not None:
-            candidates = conn.execute(
-                """SELECT id, role_normalised FROM tasks
-                   WHERE telegram_id = ? AND type = 'application' AND is_ghost = 1
-                   AND company_normalised = ? AND created_at >= ? AND cycle_id = ?
-                   ORDER BY created_at DESC""",
-                (telegram_id, company_n, cutoff, cycle_id),
-            ).fetchall()
-        else:
-            candidates = conn.execute(
-                """SELECT id, role_normalised FROM tasks
-                   WHERE telegram_id = ? AND type = 'application' AND is_ghost = 1
-                   AND company_normalised = ? AND created_at >= ?
-                   ORDER BY created_at DESC""",
-                (telegram_id, company_n, cutoff),
-            ).fetchall()
-
-    best_id, best_score = None, 0
-    for row in candidates:
-        score = fuzz.partial_ratio(role_n, row["role_normalised"] or "")
-        if score > best_score:
-            best_score, best_id = score, row["id"]
-
-    if best_id is not None and best_score >= 80:
+    best_id = _find_matching_application(
+        telegram_id, company, role, cycle_id=cycle_id, include_ghost=True
+    )
+    if best_id is not None:
         return best_id
 
     return insert_task(
@@ -247,6 +233,48 @@ def promote_ghost_application(task_id: int) -> None:
                SET is_ghost = 0, updated_at = CURRENT_TIMESTAMP
                WHERE id = ? AND type = 'application' AND is_ghost = 1""",
             (task_id,),
+        )
+
+
+def merge_application_email(
+    task_id: int,
+    gmail_id: str,
+    company: str,
+    role: str,
+    email_date: Optional[str] = None,
+) -> None:
+    company_n = _normalise(company)
+    role_n = _normalise(role)
+
+    with get_connection() as conn:
+        conn.execute(
+            """UPDATE tasks
+               SET gmail_id = COALESCE(gmail_id, ?),
+                   company = ?,
+                   company_normalised = ?,
+                   role = ?,
+                   role_normalised = ?,
+                   email_date = CASE
+                       WHEN ? IS NULL THEN email_date
+                       WHEN email_date IS NULL THEN ?
+                       WHEN email_date > ? THEN ?
+                       ELSE email_date
+                   END,
+                   is_ghost = 0,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (
+                gmail_id,
+                company,
+                company_n,
+                role,
+                role_n,
+                email_date,
+                email_date,
+                email_date,
+                email_date,
+                task_id,
+            ),
         )
 
 
