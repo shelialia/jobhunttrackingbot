@@ -7,6 +7,31 @@ from ..db import tasks
 _EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞"}
 
 
+def _task_status_label(row) -> str:
+    if row["type"] == "interview":
+        interview_dt = row["interview_date"]
+        if interview_dt:
+            dt = interview_dt if isinstance(interview_dt, datetime) else datetime.fromisoformat(interview_dt)
+            days = (dt - datetime.utcnow()).days
+            if days < 0:
+                return f"⚠️ OVERDUE {abs(days)}d ago"
+            if days == 0:
+                return "🔴 TODAY"
+            return f"{days}d remaining"
+        return "UNSCHEDULED"
+
+    if row["deadline"]:
+        dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
+        days = (dt - datetime.utcnow()).days
+        if days < 0:
+            return f"⚠️ OVERDUE {abs(days)}d ago"
+        if days == 0:
+            return "🔴 DUE TODAY"
+        return f"{days}d remaining"
+
+    return "no deadline"
+
+
 async def tasks_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
     rows = tasks.get_assessment_tasks(telegram_id)
@@ -23,18 +48,7 @@ async def tasks_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         company = escape(row["company"] or "Unknown")
         emoji = _EMOJI.get(row["type"], "📌")
         type_label = escape(row["type"].upper())
-
-        if row["deadline"]:
-            dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
-            days = (dt - datetime.utcnow()).days
-            if days < 0:
-                day_str = f"⚠️ OVERDUE {abs(days)}d ago"
-            elif days == 0:
-                day_str = "🔴 DUE TODAY"
-            else:
-                day_str = f"{days}d remaining"
-        else:
-            day_str = "no deadline"
+        day_str = _task_status_label(row)
 
         role_line = f"\n   <i>{escape(row['role'])}</i>" if row["role"] else ""
         lines.append(f"{i}. {emoji} <b>{company}</b> - <code>{type_label}</code> [{escape(day_str)}]{role_line}")

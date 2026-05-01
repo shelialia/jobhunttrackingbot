@@ -20,7 +20,20 @@ def _format_task(row) -> str:
     emoji = _TASK_EMOJI.get(row["type"], "📌")
     type_label = escape(row["type"].upper())
     role = escape(row["role"]) if row["role"] else ""
-    if row["deadline"]:
+    if row["type"] == "interview":
+        interview_dt = row["interview_date"]
+        if interview_dt:
+            dt = interview_dt if isinstance(interview_dt, datetime) else datetime.fromisoformat(interview_dt)
+            days = (dt - datetime.utcnow()).days
+            if days < 0:
+                deadline_str = f"⚠️ OVERDUE {abs(days)}d ago"
+            elif days == 0:
+                deadline_str = "🔴 TODAY"
+            else:
+                deadline_str = f"{days}d remaining"
+        else:
+            deadline_str = "UNSCHEDULED"
+    elif row["deadline"]:
         dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
         days = (dt - datetime.utcnow()).days
         if days < 0:
@@ -50,13 +63,16 @@ async def send_daily_digest(bot: Bot) -> None:
         telegram_id = user["telegram_id"]
         applications = tasks_db.get_applications_by_status(telegram_id, "incomplete")
         tasks = tasks_db.get_assessment_tasks(telegram_id)
+        assessments = [row for row in tasks if row["type"] in ("oa", "hirevue")]
+        interviews = [row for row in tasks if row["type"] == "interview"]
         offers = tasks_db.get_applications_by_status(telegram_id, "offer")
         rejections = tasks_db.get_applications_by_status(telegram_id, "rejected")
 
         lines = [f"☀️ <b>Daily Digest</b> <code>{datetime.utcnow().strftime('%d %b %Y')}</code>", ""]
         primary_sections = [
             ("📝 Applications Submitted", applications, _format_application),
-            ("🎯 Pending Tasks", tasks, _format_task),
+            ("💻 Pending Assessments", assessments, _format_task),
+            ("📞 Interviews", interviews, _format_task),
         ]
 
         for title, rows, formatter in primary_sections:

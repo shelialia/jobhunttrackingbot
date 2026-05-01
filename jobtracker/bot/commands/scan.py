@@ -197,6 +197,8 @@ async def _run_scan(
         interview_date = result.get("interview_date")
         interview_platform = result.get("interview_platform")
         email_subtype = result.get("email_subtype") or "unknown"
+        if task_type == "interview" and not interview_date:
+            deadline = None
 
         source_application_id = None
         if task_type == "application":
@@ -354,7 +356,8 @@ async def _run_scan(
     )
 
     applications = [i for i in items if i[1] == "application"]
-    tasks = [i for i in items if i[1] in ("oa", "hirevue", "interview")]
+    assessments = [i for i in items if i[1] in ("oa", "hirevue")]
+    interviews = [i for i in items if i[1] == "interview"]
     rejections = [i for i in items if i[1] == "rejection"]
     offers = [i for i in items if i[1] == "offer"]
 
@@ -370,7 +373,8 @@ async def _run_scan(
     lines = [header, ""]
     for group_label, group in (
         ("📝 Applications Submitted", applications),
-        ("🎯 Pending Tasks", tasks),
+        ("💻 Pending Assessments", assessments),
+        ("📞 Interviews", interviews),
     ):
         lines.append(f"<u><b>{escape(group_label)}</b></u> <b>({len(group)})</b>")
         for company, _, role, email_date, low_conf in group:

@@ -225,8 +225,8 @@ def get_assessment_tasks(telegram_id: int) -> list[sqlite3.Row]:
                WHERE telegram_id = ? AND status = 'incomplete' AND is_ghost = 0
                AND type IN ('oa', 'hirevue', 'interview')
                ORDER BY
-                 CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
-                 deadline ASC,
+                 CASE WHEN COALESCE(interview_date, deadline) IS NULL THEN 1 ELSE 0 END,
+                 COALESCE(interview_date, deadline) ASC,
                  CASE type
                    WHEN 'interview' THEN 0
                    WHEN 'hirevue'   THEN 1
@@ -263,8 +263,8 @@ def get_incomplete_tasks(telegram_id: int) -> list[sqlite3.Row]:
             """SELECT * FROM tasks
                WHERE telegram_id = ? AND status = 'incomplete' AND is_ghost = 0
                ORDER BY
-                 CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
-                 deadline ASC,
+                 CASE WHEN COALESCE(interview_date, deadline) IS NULL THEN 1 ELSE 0 END,
+                 COALESCE(interview_date, deadline) ASC,
                  CASE type
                    WHEN 'interview' THEN 0
                    WHEN 'hirevue'   THEN 1
@@ -281,9 +281,13 @@ def get_upcoming_tasks(telegram_id: int) -> list[sqlite3.Row]:
         return conn.execute(
             """SELECT * FROM tasks
                WHERE telegram_id = ? AND status = 'incomplete' AND is_ghost = 0
-               AND deadline IS NOT NULL AND deadline <= ?
-               ORDER BY deadline ASC""",
-            (telegram_id, cutoff),
+               AND (
+                   (type = 'interview' AND interview_date IS NOT NULL AND interview_date <= ?)
+                   OR
+                   (type != 'interview' AND deadline IS NOT NULL AND deadline <= ?)
+               )
+               ORDER BY COALESCE(interview_date, deadline) ASC""",
+            (telegram_id, cutoff, cutoff),
         ).fetchall()
 
 
@@ -703,8 +707,14 @@ def get_sankey_edges(telegram_id: int, cycle_id: int) -> list[tuple[str, str, in
                    WHERE c.type != 'irrelevant'
                    GROUP BY p.type, c.type
                )
-               , ghosted_edges AS (
-                   SELECT c.type AS source, 'ghosted' AS target, COUNT(*) AS flow
+               , terminal_edges AS (
+                   SELECT
+                       c.type AS source,
+                       CASE
+                           WHEN c.type IN ('oa', 'hirevue', 'interview') THEN 'pending'
+                           ELSE 'ghosted'
+                       END AS target,
+                       COUNT(*) AS flow
                    FROM chain c
                    WHERE c.type IN ('application', 'oa', 'hirevue', 'interview')
                      AND NOT EXISTS (
@@ -713,11 +723,16 @@ def get_sankey_edges(telegram_id: int, cycle_id: int) -> list[tuple[str, str, in
                          WHERE t.source_application_id = c.id
                            AND t.type != 'irrelevant'
                      )
-                   GROUP BY c.type
+                   GROUP BY
+                       c.type,
+                       CASE
+                           WHEN c.type IN ('oa', 'hirevue', 'interview') THEN 'pending'
+                           ELSE 'ghosted'
+                       END
                )
                SELECT source, target, flow FROM edges
                UNION ALL
-               SELECT source, target, flow FROM ghosted_edges
+               SELECT source, target, flow FROM terminal_edges
                ORDER BY source, target""",
             (cycle_id, telegram_id),
         ).fetchall()

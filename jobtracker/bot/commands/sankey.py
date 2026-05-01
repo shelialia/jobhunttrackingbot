@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 from ..db import cycles as cycles_db, tasks as tasks_db, users
 
 
-_NODE_ORDER = ["application", "oa", "hirevue", "interview", "offer", "rejection", "ghosted"]
+_NODE_ORDER = ["application", "oa", "hirevue", "interview", "offer", "rejection", "ghosted", "pending"]
 _NODE_COLORS = {
     "application": "#3b82f6",
     "oa": "#f97316",
@@ -16,6 +16,7 @@ _NODE_COLORS = {
     "offer": "#22c55e",
     "rejection": "#ef4444",
     "ghosted": "#808080",
+    "pending": "#F0A500",
 }
 _NODE_LABELS = {
     "application": "Application",
@@ -25,6 +26,7 @@ _NODE_LABELS = {
     "offer": "Offer",
     "rejection": "Rejection",
     "ghosted": "Ghosted",
+    "pending": "Pending",
 }
 
 

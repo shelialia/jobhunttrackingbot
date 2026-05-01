@@ -59,6 +59,9 @@ Rules:
 - interview_date: for interview emails only, extract the confirmed or proposed interview date/time in ISO 8601 UTC if present. Otherwise null.
 - interview_platform: for interview emails only, extract the interview platform if present (for example: Zoom, Google Meet, Microsoft Teams, phone, onsite). Otherwise null.
 - email_subtype: for interview emails only, classify the email as invitation, scheduling, confirmation, or unknown. Use unknown for non-interview emails.
+- For interview emails, do NOT treat recruiter availability windows, scheduling links, or "please pick a time in the next few days" as the interview date.
+- For interview emails, set deadline only if the email gives an explicit candidate response/booking deadline. If the email is just asking the candidate to schedule using a link and no reply-by deadline is stated, set deadline to null.
+- For interview emails without a confirmed interview time yet, set interview_date to null.
 
 Key distinction: only classify emails that are part of an ACTIVE, PENDING application process. Post-acceptance emails (team matching updates, onboarding, intro calls with future colleagues/mentors) are irrelevant.
 
