@@ -178,6 +178,17 @@ def get_applications(telegram_id: int) -> list[sqlite3.Row]:
         ).fetchall()
 
 
+def get_applications_by_status(telegram_id: int, status: str) -> list[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT * FROM tasks
+               WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
+               AND status = ?
+               ORDER BY updated_at DESC, created_at DESC""",
+            (telegram_id, status),
+        ).fetchall()
+
+
 def get_incomplete_tasks(telegram_id: int) -> list[sqlite3.Row]:
     with get_connection() as conn:
         return conn.execute(

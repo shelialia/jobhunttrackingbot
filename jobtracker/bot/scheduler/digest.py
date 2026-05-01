@@ -2,13 +2,20 @@ from datetime import datetime
 from telegram import Bot
 from ..db import tasks as tasks_db, users as users_db
 
-_EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞", "application": "📝"}
+_TASK_EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞"}
+
+
+def _format_application(row) -> str:
+    company = row["company"] or "Unknown"
+    role = f" — {row['role']}" if row["role"] else ""
+    return f"📝 *{company}*{role}"
 
 
 def _format_task(row) -> str:
     company = row["company"] or "Unknown"
-    emoji = _EMOJI.get(row["type"], "📌")
+    emoji = _TASK_EMOJI.get(row["type"], "📌")
     type_label = row["type"].upper()
+    role = f" — {row['role']}" if row["role"] else ""
     if row["deadline"]:
         dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
         days = (dt - datetime.utcnow()).days
@@ -20,7 +27,7 @@ def _format_task(row) -> str:
             deadline_str = f"{days}d remaining"
     else:
         deadline_str = "no deadline"
-    return f"{emoji} *{company}* — {type_label} [{deadline_str}]"
+    return f"{emoji} *{company}*{role} — {type_label} [{deadline_str}]"
 
 
 async def send_daily_digest(bot: Bot) -> None:
@@ -31,14 +38,30 @@ async def send_daily_digest(bot: Bot) -> None:
             continue
 
         telegram_id = user["telegram_id"]
-        rows = tasks_db.get_incomplete_tasks(telegram_id)
+        applications = tasks_db.get_applications_by_status(telegram_id, "incomplete")
+        tasks = tasks_db.get_assessment_tasks(telegram_id)
+        offers = tasks_db.get_applications_by_status(telegram_id, "offer")
+        rejections = tasks_db.get_applications_by_status(telegram_id, "rejected")
 
-        if not rows:
+        if not applications and not tasks and not offers and not rejections:
             continue
 
         lines = [f"☀️ *Daily Digest — {datetime.utcnow().strftime('%d %b %Y')}*\n"]
-        lines += [_format_task(r) for r in rows]
-        lines.append("\n_Use /tasks for details or /done <company> to mark complete._")
+        sections = [
+            ("📝 Applications Submitted", applications, _format_application),
+            ("🎯 Interviews & Assessments", tasks, _format_task),
+            ("🎉 Offers", offers, _format_application),
+            ("❌ Rejections", rejections, _format_application),
+        ]
+
+        for title, rows, formatter in sections:
+            if not rows:
+                continue
+            lines.append(f"{title} ({len(rows)})")
+            lines.extend(formatter(row) for row in rows)
+            lines.append("")
+
+        lines.append("_Use /tasks for details or /done <task_number> to mark complete._")
 
         try:
             await bot.send_message(

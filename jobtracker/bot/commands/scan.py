@@ -7,14 +7,6 @@ from ..gmail.fetch import fetch_new_messages
 from ..gmail.parse import extract_subject_and_body, get_gmail_id, get_email_date
 from ..llm.classify import classify_email
 
-_GROUPS = [
-    ("application",               "📝 Applications Submitted"),
-    (("oa", "hirevue", "interview"), "🎯 Interviews & Assessments"),
-    ("rejection",                 "❌ Rejections"),
-    ("offer",                     "🎉 Offers"),
-]
-
-
 def _format_date(email_date: str | None) -> str:
     if not email_date:
         return ""
@@ -121,12 +113,18 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
     if not items:
         text = "✅ Scan complete — no new tasks found."
     else:
+        applications = [i for i in items if i[1] == "application"]
+        tasks = [i for i in items if i[1] in ("oa", "hirevue", "interview")]
+        rejections = [i for i in items if i[1] == "rejection"]
+        offers = [i for i in items if i[1] == "offer"]
+
         lines = ["✅ *Scan complete!*\n"]
-        for type_key, group_label in _GROUPS:
-            if isinstance(type_key, str):
-                group = [i for i in items if i[1] == type_key]
-            else:
-                group = [i for i in items if i[1] in type_key]
+        for group_label, group in (
+            ("📝 Applications Submitted", applications),
+            ("🎯 Interviews & Assessments", tasks),
+            ("❌ Rejections", rejections),
+            ("🎉 Offers", offers),
+        ):
             if not group:
                 continue
             lines.append(f"{group_label} ({len(group)})")
