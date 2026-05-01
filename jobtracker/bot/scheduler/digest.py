@@ -2,6 +2,7 @@ from html import escape
 from datetime import datetime
 from telegram import Bot
 from ..db import tasks as tasks_db, users as users_db
+from ..message_utils import send_chunked_lines
 
 _TASK_EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞"}
 
@@ -93,9 +94,10 @@ async def send_daily_digest(bot: Bot) -> None:
         lines.append("<i>Use /tasks for details or /done &lt;task_number&gt; to mark complete.</i>")
 
         try:
-            await bot.send_message(
-                chat_id=telegram_id,
-                text="\n".join(lines),
+            await send_chunked_lines(
+                bot,
+                telegram_id,
+                lines,
                 parse_mode="HTML",
             )
         except Exception:

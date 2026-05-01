@@ -2,6 +2,7 @@ from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks as tasks_db, cycles as cycles_db, users
+from ..message_utils import reply_chunked_lines
 
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -31,10 +32,12 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"{'Avg days to reply:':<20} {s['avg_days']:>4}"
     )
 
-    await update.message.reply_text(
-        (
-            f"📊 <b>{escape(cycle['name'])}</b>\n\n"
-            f"<pre>{escape(table)}</pre>"
-        ),
+    await reply_chunked_lines(
+        update.message,
+        [
+            f"📊 <b>{escape(cycle['name'])}</b>",
+            "",
+            f"<pre>{escape(table)}</pre>",
+        ],
         parse_mode="HTML",
     )

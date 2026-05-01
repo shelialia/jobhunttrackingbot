@@ -1,6 +1,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from ..db import cycles as cycles_db, users as users_db
+from ..message_utils import reply_chunked_lines
 
 
 async def cycles_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -27,8 +28,9 @@ async def cycles_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         lines.append("")
 
     keyboard = [[InlineKeyboardButton("＋ New Cycle", callback_data="cycle_action:new")]]
-    await update.message.reply_text(
-        "\n".join(lines).strip(),
+    await reply_chunked_lines(
+        update.message,
+        "\n".join(lines).strip().split("\n"),
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )

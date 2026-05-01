@@ -9,6 +9,7 @@ from ..db import users, tasks as tasks_db, cycles as cycles_db
 from ..gmail.fetch import fetch_new_messages
 from ..gmail.parse import extract_subject_and_body, get_gmail_id, get_email_date
 from ..llm.classify import classify_email
+from ..message_utils import send_chunked_lines
 
 logger = logging.getLogger(__name__)
 _CLASSIFY_RETRY_DELAYS = (2, 5, 10)
@@ -392,10 +393,12 @@ async def _run_scan(
             lines.append(_format_scan_item(company, role, email_date, low_conf))
         lines.append("")
 
-    text = "\n".join(lines).strip()
-    parse_mode = "HTML"
-
-    await bot.send_message(chat_id=telegram_id, text=text, parse_mode=parse_mode)
+    await send_chunked_lines(
+        bot,
+        telegram_id,
+        "\n".join(lines).strip().split("\n"),
+        parse_mode="HTML",
+    )
 
 
 async def run_daily_auto_scan(bot: Bot) -> None:

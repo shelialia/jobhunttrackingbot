@@ -1,5 +1,6 @@
 from telegram import Update
 from telegram.ext import ContextTypes
+from ..message_utils import reply_chunked_lines
 
 HELP_TEXT = """
 🤖 <b>CronJobBot - Commands</b>
@@ -33,4 +34,4 @@ HELP_TEXT = """
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(HELP_TEXT, parse_mode="HTML")
+    await reply_chunked_lines(update.message, HELP_TEXT.split("\n"), parse_mode="HTML")

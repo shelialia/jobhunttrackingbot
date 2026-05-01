@@ -3,6 +3,7 @@ from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks
+from ..message_utils import reply_chunked_lines
 
 _EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞"}
 
@@ -55,4 +56,4 @@ async def tasks_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lines[0] = "📋 <b>Pending Assessments & Interviews</b>\n"
     lines.append("\n<i>Use /done &lt;task_number&gt; to mark complete</i>")
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    await reply_chunked_lines(update.message, lines, parse_mode="HTML")

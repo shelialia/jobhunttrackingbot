@@ -3,6 +3,7 @@ from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import cycles as cycles_db, tasks, users
+from ..message_utils import reply_chunked_lines
 
 _STATUS_EMOJI = {"done": "✅", "offer": "🎉", "reject": "❌", "rejected": "❌"}
 
@@ -48,4 +49,4 @@ async def applied(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lines.append("\n<i>Use /offer &lt;app_number&gt; or /reject &lt;app_number&gt; to update status</i>")
     lines.append("<i>Use /timeline &lt;number&gt; to see full progress</i>")
     lines.append("<i>e.g. /timeline 1</i>")
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    await reply_chunked_lines(update.message, lines, parse_mode="HTML")

@@ -5,6 +5,7 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from ..db import cycles as cycles_db, tasks as tasks_db, users
+from ..message_utils import reply_chunked_lines
 
 
 def _row_datetime(row) -> datetime:
@@ -119,7 +120,10 @@ async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         lines.append(f"{emoji} {label:<28} {_format_timeline_date(row)}")
 
     timeline_content = _escape_codeblock("\n".join(lines))
-    await update.message.reply_text(
-        f"```timeline\n{timeline_content}\n```",
+    await reply_chunked_lines(
+        update.message,
+        timeline_content.split("\n"),
         parse_mode=ParseMode.MARKDOWN_V2,
+        prefix="```timeline\n",
+        suffix="\n```",
     )

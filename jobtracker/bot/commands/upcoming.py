@@ -3,6 +3,7 @@ from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks
+from ..message_utils import reply_chunked_lines
 
 _EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞", "application": "📝"}
 
@@ -27,4 +28,4 @@ async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<code>{escape(row['type'].upper())}</code> [{escape(tag)}]{role_line}"
         )
 
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    await reply_chunked_lines(update.message, lines, parse_mode="HTML")
