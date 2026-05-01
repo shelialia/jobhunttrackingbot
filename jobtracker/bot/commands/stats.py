@@ -9,6 +9,12 @@ def _escape_codeblock(text: str) -> str:
     return text.replace("\\", "\\\\").replace("`", "\\`")
 
 
+def _escape_markdown(text: str) -> str:
+    for ch in "_*[]()~`>#+-=|{}.!":
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
+
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
     if not users.get_user(telegram_id):
@@ -24,9 +30,8 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     s = tasks_db.get_cycle_stats(telegram_id, cycle["id"])
 
+    title = f"📊 {cycle['name']}"
     lines = [
-        f"📊 {cycle['name']}",
-        "──────────────────────────────────────────",
         f"{'Applied':<16} {s['applied']:>4}",
         f"{'Interviewing':<16} {s['interviewing']:>4}",
         f"{'Offered':<16} {s['offered']:>4}",
@@ -43,6 +48,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         update.message,
         stats_content.split("\n"),
         parse_mode=ParseMode.MARKDOWN_V2,
-        prefix="```stats\n",
+        prefix=f"*{_escape_markdown(title)}*\n```stats\n",
         suffix="\n```",
     )
