@@ -34,8 +34,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 _COMMANDS = [
+    BotCommand("start", "Set up your account"),
     BotCommand("tasks", "Assessments and interviews to complete"),
     BotCommand("applied", "All applications submitted"),
+    BotCommand("upcoming", "Tasks due in the next 7 days"),
     BotCommand("stats", "Job hunt stats for your active cycle"),
     BotCommand("scan", "Manually scan Gmail now"),
     BotCommand("done", "Mark a task as done"),
