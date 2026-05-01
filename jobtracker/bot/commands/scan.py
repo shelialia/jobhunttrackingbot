@@ -19,25 +19,36 @@ def _format_date(email_date: str | None) -> str:
     if not email_date:
         return ""
     try:
-        dt = datetime.strptime(email_date, "%Y-%m-%d %H:%M:%S")
+        value = email_date.replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(value)
+        except ValueError:
+            dt = datetime.strptime(email_date, "%Y-%m-%d %H:%M:%S")
         return dt.strftime("%d %b").lstrip("0")
     except Exception:
         return ""
 
 
-def _format_scan_item(company: str, role: str, email_date: str | None, low_conf: bool) -> str:
-    date_str = _format_date(email_date)
+def _format_scan_item(company: str, role: str, date_label: str | None, low_conf: bool) -> str:
     company_html = escape(company)
     role_html = escape(role)
 
     parts = [f"• <b>{company_html}</b>"]
     if role_html:
         parts.append(f" <i>{role_html}</i>")
-    if date_str:
-        parts.append(f" <code>{escape(date_str)}</code>")
+    if date_label:
+        parts.append(f" <code>{escape(date_label)}</code>")
     if low_conf:
         parts.append(" <i>Low confidence</i>")
     return "".join(parts)
+
+
+def _scan_date_label(task_type: str, email_date: str | None, interview_date: str | None) -> str | None:
+    if task_type == "interview":
+        if interview_date:
+            return _format_date(interview_date)
+        return "UNSCHEDULED"
+    return _format_date(email_date)
 
 
 def _message_sort_key(message: dict) -> tuple[int, str]:
@@ -159,7 +170,7 @@ async def _run_scan(
 
     messages = fetch_new_messages(user["gmail_token_json"], scan_start)
     messages.sort(key=_message_sort_key)
-    # each entry: (company, task_type, role, email_date, low_conf)
+    # each entry: (company, task_type, role, date_label, low_conf)
     items: list[tuple[str, str, str, str | None, bool]] = []
 
     for msg in messages:
@@ -198,6 +209,11 @@ async def _run_scan(
         interview_date = result.get("interview_date")
         interview_platform = result.get("interview_platform")
         email_subtype = result.get("email_subtype") or "unknown"
+        if task_type == "interview":
+            if is_final_round:
+                round_label = "final"
+            elif interview_round is not None and interview_round > 1 and round_label == "phone screen":
+                round_label = None
         if task_type == "interview" and not interview_date:
             deadline = None
 
@@ -225,7 +241,7 @@ async def _run_scan(
                     link=link,
                     email_date=email_date,
                 )
-                items.append((company, task_type, role, email_date, confidence < 0.7))
+                items.append((company, task_type, role, _scan_date_label(task_type, email_date, interview_date), confidence < 0.7))
                 continue
 
         if task_type == "interview":
@@ -291,8 +307,9 @@ async def _run_scan(
                     interview_date=interview_date,
                     interview_platform=interview_platform,
                     confirmed_at=email_date if email_subtype == "confirmation" else None,
+                    clear_deadline=(task_type == "interview" and not interview_date),
                 )
-                items.append((company, task_type, role, email_date, confidence < 0.7))
+                items.append((company, task_type, role, _scan_date_label(task_type, email_date, interview_date), confidence < 0.7))
                 continue
 
             if interview_round == 1:
@@ -360,7 +377,7 @@ async def _run_scan(
                 root_application_id,
                 "offer" if task_type == "offer" else "rejected",
             )
-            items.append((company, task_type, role, email_date, confidence < 0.7))
+            items.append((company, task_type, role, _scan_date_label(task_type, email_date, interview_date), confidence < 0.7))
             continue
 
         task_id = tasks_db.insert_task(
@@ -382,7 +399,7 @@ async def _run_scan(
         if task_id is None:
             continue
 
-        items.append((company, task_type, role, email_date, confidence < 0.7))
+        items.append((company, task_type, role, _scan_date_label(task_type, email_date, interview_date), confidence < 0.7))
 
     users.update_last_scanned(
         telegram_id,
@@ -412,8 +429,8 @@ async def _run_scan(
         ("📞 Interviews", interviews),
     ):
         lines.append(f"<u><b>{escape(group_label)}</b></u> <b>({len(group)})</b>")
-        for company, _, role, email_date, low_conf in group:
-            lines.append(_format_scan_item(company, role, email_date, low_conf))
+        for company, _, role, date_label, low_conf in group:
+            lines.append(_format_scan_item(company, role, date_label, low_conf))
         lines.append("")
 
     for group_label, group in (
@@ -423,8 +440,8 @@ async def _run_scan(
         if not group:
             continue
         lines.append(f"<u><b>{escape(group_label)}</b></u> <b>({len(group)})</b>")
-        for company, _, role, email_date, low_conf in group:
-            lines.append(_format_scan_item(company, role, email_date, low_conf))
+        for company, _, role, date_label, low_conf in group:
+            lines.append(_format_scan_item(company, role, date_label, low_conf))
         lines.append("")
 
     await send_chunked_lines(

@@ -418,6 +418,7 @@ def update_interview_task(
     interview_date: Optional[str] = None,
     interview_platform: Optional[str] = None,
     confirmed_at: Optional[str] = None,
+    clear_deadline: bool = False,
 ) -> None:
     company_value = company if company else None
     role_value = role if role else None
@@ -443,7 +444,10 @@ def update_interview_task(
                    interview_round = COALESCE(?, interview_round),
                    is_final_round = COALESCE(?, is_final_round),
                    round_label = COALESCE(?, round_label),
-                   deadline = COALESCE(?, deadline),
+                   deadline = CASE
+                       WHEN ? THEN NULL
+                       ELSE COALESCE(?, deadline)
+                   END,
                    interview_date = COALESCE(?, interview_date),
                    interview_platform = COALESCE(?, interview_platform),
                    confirmed_at = COALESCE(?, confirmed_at),
@@ -469,6 +473,7 @@ def update_interview_task(
                 interview_round,
                 is_final_round,
                 round_label,
+                1 if clear_deadline else 0,
                 deadline,
                 interview_date,
                 interview_platform,
