@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 from telegram import Bot, Update
 from telegram.ext import ContextTypes
-from ..db import users, tasks as tasks_db
+from ..db import users, tasks as tasks_db, cycles as cycles_db
 from ..gmail.fetch import fetch_new_messages
 from ..gmail.parse import extract_subject_and_body, get_gmail_id, get_email_date
 from ..llm.classify import classify_email
@@ -11,6 +11,15 @@ _EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞", "application": "
 
 
 async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
+    cycle = cycles_db.get_active_cycle(telegram_id)
+    if not cycle:
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="⚠️ No active cycle. Use /newcycle to create one before scanning.",
+        )
+        return
+    cycle_id = cycle["id"]
+
     # TEMP: hardcoded for testing — remove before deploy
     last_scanned = datetime(2026, 4, 20)
 
@@ -42,12 +51,14 @@ async def _run_scan(bot: Bot, telegram_id: int, user: dict) -> None:
 
         source_application_id = None
         if task_type in ("oa", "hirevue", "interview"):
-            source_application_id = tasks_db.find_application_for_linking(telegram_id, company, role)
+            source_application_id = tasks_db.find_application_for_linking(
+                telegram_id, company, role, cycle_id=cycle_id
+            )
 
         task_id = tasks_db.insert_task(
             telegram_id, gmail_id, task_type,
             company, role, deadline, link, source_application_id,
-            email_date=email_date,
+            email_date=email_date, cycle_id=cycle_id,
         )
 
         if task_id is None:

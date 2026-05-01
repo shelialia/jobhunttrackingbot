@@ -38,13 +38,19 @@ jobtracker/
 │   │   ├── tasks.py         # /tasks pending assessments + interviews
 │   │   ├── applied.py       # /applied all applications
 │   │   ├── upcoming.py      # /upcoming next 7 days
-│   │   ├── stats.py         # /stats job hunt statistics
+│   │   ├── stats.py         # /stats cycle-scoped statistics
 │   │   ├── scan.py          # /scan manual Gmail poll
 │   │   ├── done.py          # /done [company]
 │   │   ├── offer.py         # /offer [company]
 │   │   ├── reject.py        # /reject [company]
 │   │   ├── add.py           # /add [company] [deadline]
 │   │   ├── remove.py        # /remove [company]
+│   │   ├── cycles.py        # /cycles — list with inline keyboard
+│   │   ├── newcycle.py      # /newcycle — create + activate cycle
+│   │   ├── endcycle.py      # /endcycle — end active cycle
+│   │   ├── switchcycle.py   # /switchcycle — inline keyboard to switch
+│   │   ├── cycle_callbacks.py  # inline keyboard callback handler
+│   │   ├── text_input.py    # MessageHandler for cycle name input
 │   │   └── help.py          # /help
 │   ├── scheduler/
 │   │   ├── digest.py        # daily 9AM UTC digest job
@@ -58,6 +64,7 @@ jobtracker/
 │   └── db/
 │       ├── schema.py        # CREATE TABLE statements + migrations
 │       ├── users.py         # user CRUD
+│       ├── cycles.py        # cycle CRUD
 │       └── tasks.py         # task CRUD + dedup + linking logic
 ├── oauth_server/
 │   └── app.py               # Flask callback — receives OAuth code from Google
@@ -83,11 +90,22 @@ jobtracker/
 | last_scanned_at | TIMESTAMP | updated after every scan |
 | created_at | TIMESTAMP | |
 
+### cycles
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| telegram_id | INTEGER FK | references users.telegram_id |
+| name | TEXT | e.g. "Summer 2025 Internship" |
+| is_active | INTEGER | 1 = active; only one active per user at a time |
+| started_at | TIMESTAMP | |
+| ended_at | TIMESTAMP | NULL while active |
+
 ### tasks
 | Column | Type | Notes |
 |---|---|---|
 | id | INTEGER PK | |
 | telegram_id | INTEGER FK | |
+| cycle_id | INTEGER FK | references cycles.id — nullable for legacy rows |
 | source_application_id | INTEGER FK | self-ref — links OA/HireVue/interview back to its application row |
 | gmail_id | TEXT | raw Gmail message ID — dedup key (nullable for ghosts) |
 | type | TEXT | application \| oa \| hirevue \| interview |
@@ -178,18 +196,22 @@ Secondary: type priority — `interview (0) > hirevue (1) > oa (2)` as tiebreake
 
 | Command | Description |
 |---|---|
-| `/start` | Onboard user, show privacy notice, prompt /connect |
+| `/start` | Show privacy notice; /confirm creates user and prompts for first cycle name |
 | `/connect` | Generate Gmail OAuth2 URL, send to user |
 | `/tasks` | Pending assessments and interviews sorted by urgency |
 | `/applied` | All submitted applications |
 | `/upcoming` | Tasks due in the next 7 days |
-| `/stats` | Job hunt stats — applied, response rate, pending |
-| `/scan` | Trigger immediate Gmail poll, reply with newly found tasks |
+| `/stats` | Stats scoped to active cycle — applied, response rate, offer rate, avg days |
+| `/scan` | Trigger immediate Gmail poll; blocks if no active cycle |
 | `/done [company]` | Mark matching incomplete task as done |
 | `/offer [company]` | Mark an application as an offer |
 | `/reject [company]` | Mark an application as rejected |
-| `/add [company] [deadline]` | Manually insert a task the bot missed |
+| `/add [company] [deadline]` | Manually insert a task; tagged with active cycle if one exists |
 | `/remove [company]` | Delete a wrongly detected task |
+| `/cycles` | List all cycles with inline [+ New Cycle] button |
+| `/newcycle` | Prompt for name, create cycle, set as active |
+| `/endcycle` | End the current active cycle |
+| `/switchcycle` | Show inline keyboard to switch active cycle |
 | `/help` | List all commands |
 
 ---

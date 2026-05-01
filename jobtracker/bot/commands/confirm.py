@@ -15,13 +15,11 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if context.user_data.get("awaiting_privacy_confirm"):
         context.user_data.pop("awaiting_privacy_confirm")
         users_db.create_user(update.effective_user.id)
+        context.user_data["awaiting_cycle_name"] = "onboarding"
         await update.message.reply_text(
-            "👋 *Welcome to Job Hunt Tracker!*\n\n"
-            "I monitor your Gmail inbox for job application tasks — "
-            "OAs, HireVues, interviews — and help you stay on top of deadlines.\n\n"
-            "🔗 To get started, connect your Gmail:\n"
-            "/connect\n\n"
-            "Type /help to see all available commands.",
+            "Great! Let's set up your first job search cycle.\n\n"
+            "What would you like to name it?\n"
+            '_(e.g. "Summer 2025 Internship", "Full Time Grad 2026")_',
             parse_mode="Markdown",
         )
         return

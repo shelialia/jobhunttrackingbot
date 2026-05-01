@@ -16,7 +16,7 @@ def _normalise(text: str) -> str:
     return text
 
 
-def find_application_for_linking(telegram_id: int, company: str, role: str) -> Optional[int]:
+def find_application_for_linking(telegram_id: int, company: str, role: str, cycle_id: Optional[int] = None) -> Optional[int]:
     """Return the most recent real application for this company with the best fuzzy role match, or None."""
     from rapidfuzz import fuzz
     company_n = _normalise(company)
@@ -24,13 +24,22 @@ def find_application_for_linking(telegram_id: int, company: str, role: str) -> O
     cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
 
     with get_connection() as conn:
-        candidates = conn.execute(
-            """SELECT id, role_normalised FROM tasks
-               WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
-               AND company_normalised = ? AND created_at >= ?
-               ORDER BY created_at DESC""",
-            (telegram_id, company_n, cutoff),
-        ).fetchall()
+        if cycle_id is not None:
+            candidates = conn.execute(
+                """SELECT id, role_normalised FROM tasks
+                   WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
+                   AND company_normalised = ? AND created_at >= ? AND cycle_id = ?
+                   ORDER BY created_at DESC""",
+                (telegram_id, company_n, cutoff, cycle_id),
+            ).fetchall()
+        else:
+            candidates = conn.execute(
+                """SELECT id, role_normalised FROM tasks
+                   WHERE telegram_id = ? AND type = 'application' AND is_ghost = 0
+                   AND company_normalised = ? AND created_at >= ?
+                   ORDER BY created_at DESC""",
+                (telegram_id, company_n, cutoff),
+            ).fetchall()
 
     if not candidates:
         return None
@@ -55,6 +64,7 @@ def insert_task(
     source_application_id: Optional[int] = None,
     is_ghost: int = 0,
     email_date: Optional[str] = None,
+    cycle_id: Optional[int] = None,
 ) -> Optional[int]:
     company_n = _normalise(company)
     role_n = _normalise(role)
@@ -63,11 +73,11 @@ def insert_task(
         try:
             cursor = conn.execute(
                 """INSERT INTO tasks
-                   (telegram_id, source_application_id, gmail_id, type,
+                   (telegram_id, cycle_id, source_application_id, gmail_id, type,
                     company, company_normalised, role, role_normalised,
                     deadline, link, email_date, status, is_ghost)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'incomplete', ?)""",
-                (telegram_id, source_application_id, gmail_id,
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'incomplete', ?)""",
+                (telegram_id, cycle_id, source_application_id, gmail_id,
                  task_type, company, company_n, role, role_n,
                  deadline, link, email_date, is_ghost),
             )
@@ -183,17 +193,88 @@ def insert_manual_task(
     role: str,
     task_type: str,
     deadline: Optional[str],
+    cycle_id: Optional[int] = None,
 ) -> int:
     company_n = _normalise(company)
     role_n = _normalise(role)
     with get_connection() as conn:
         cursor = conn.execute(
             """INSERT INTO tasks
-               (telegram_id, type, company, company_normalised, role, role_normalised, deadline, status, is_ghost)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'incomplete', 0)""",
-            (telegram_id, task_type, company, company_n, role, role_n, deadline),
+               (telegram_id, cycle_id, type, company, company_normalised, role, role_normalised, deadline, status, is_ghost)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'incomplete', 0)""",
+            (telegram_id, cycle_id, task_type, company, company_n, role, role_n, deadline),
         )
         return cursor.lastrowid
+
+
+def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
+    with get_connection() as conn:
+        applied = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type = 'application' AND is_ghost = 0",
+            (telegram_id, cycle_id),
+        ).fetchone()[0]
+
+        interviewing = conn.execute(
+            """SELECT COUNT(DISTINCT source_application_id) FROM tasks
+               WHERE telegram_id = ? AND cycle_id = ?
+               AND type IN ('oa', 'hirevue', 'interview') AND status = 'incomplete'
+               AND source_application_id IS NOT NULL""",
+            (telegram_id, cycle_id),
+        ).fetchone()[0]
+
+        offered = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type = 'application' AND is_ghost = 0 AND status = 'offer'",
+            (telegram_id, cycle_id),
+        ).fetchone()[0]
+
+        rejected = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type = 'application' AND is_ghost = 0 AND status = 'rejected'",
+            (telegram_id, cycle_id),
+        ).fetchone()[0]
+
+        # Ghosted = real applications still incomplete with no linked follow-up tasks
+        ghosted = conn.execute(
+            """SELECT COUNT(*) FROM tasks app
+               WHERE app.telegram_id = ? AND app.cycle_id = ?
+               AND app.type = 'application' AND app.is_ghost = 0 AND app.status = 'incomplete'
+               AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.source_application_id = app.id)""",
+            (telegram_id, cycle_id),
+        ).fetchone()[0]
+
+        pending = conn.execute(
+            """SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ?
+               AND type IN ('oa', 'hirevue', 'interview') AND status = 'incomplete'""",
+            (telegram_id, cycle_id),
+        ).fetchone()[0]
+
+        responded = conn.execute(
+            """SELECT COUNT(DISTINCT source_application_id) FROM tasks
+               WHERE telegram_id = ? AND cycle_id = ?
+               AND type IN ('oa', 'hirevue', 'interview')
+               AND source_application_id IS NOT NULL""",
+            (telegram_id, cycle_id),
+        ).fetchone()[0]
+
+        avg_days_raw = conn.execute(
+            """SELECT AVG(julianday(t.created_at) - julianday(app.created_at))
+               FROM tasks t
+               JOIN tasks app ON t.source_application_id = app.id
+               WHERE t.telegram_id = ? AND t.cycle_id = ?
+               AND t.type IN ('oa', 'hirevue', 'interview')""",
+            (telegram_id, cycle_id),
+        ).fetchone()[0]
+
+        return {
+            "applied": applied,
+            "interviewing": interviewing,
+            "offered": offered,
+            "rejected": rejected,
+            "ghosted": ghosted,
+            "pending": pending,
+            "response_rate": round(responded / applied * 100) if applied else 0,
+            "offer_rate": round(offered / applied * 100, 1) if applied else 0,
+            "avg_days": round(avg_days_raw) if avg_days_raw else 0,
+        }
 
 
 def get_user_stats(telegram_id: int) -> dict:

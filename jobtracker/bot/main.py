@@ -2,7 +2,7 @@ import os
 import logging
 from dotenv import load_dotenv
 from telegram import BotCommand
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -21,6 +21,12 @@ from .commands.confirm import confirm
 from .commands.add import add
 from .commands.remove import remove
 from .commands.help import help_cmd
+from .commands.cycles import cycles_cmd
+from .commands.newcycle import newcycle
+from .commands.endcycle import endcycle
+from .commands.switchcycle import switchcycle
+from .commands.cycle_callbacks import handle_cycle_callback
+from .commands.text_input import handle_text_message
 from .scheduler.digest import send_daily_digest
 
 load_dotenv()
@@ -30,7 +36,7 @@ logger = logging.getLogger(__name__)
 _COMMANDS = [
     BotCommand("tasks", "Assessments and interviews to complete"),
     BotCommand("applied", "All applications submitted"),
-    BotCommand("stats", "Your job hunt stats"),
+    BotCommand("stats", "Job hunt stats for your active cycle"),
     BotCommand("scan", "Manually scan Gmail now"),
     BotCommand("done", "Mark a task as done"),
     BotCommand("offer", "Mark an application as an offer"),
@@ -39,6 +45,10 @@ _COMMANDS = [
     BotCommand("confirm", "Confirm a pending action"),
     BotCommand("add", "Manually add a task"),
     BotCommand("connect", "Connect your Gmail account"),
+    BotCommand("cycles", "View all your cycles"),
+    BotCommand("newcycle", "Start a new cycle"),
+    BotCommand("endcycle", "End the current cycle"),
+    BotCommand("switchcycle", "Switch to a different cycle"),
     BotCommand("help", "List all commands"),
 ]
 
@@ -67,7 +77,13 @@ def main() -> None:
     app.add_handler(CommandHandler("confirm", confirm))
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("remove", remove))
+    app.add_handler(CommandHandler("cycles", cycles_cmd))
+    app.add_handler(CommandHandler("newcycle", newcycle))
+    app.add_handler(CommandHandler("endcycle", endcycle))
+    app.add_handler(CommandHandler("switchcycle", switchcycle))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CallbackQueryHandler(handle_cycle_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(

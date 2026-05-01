@@ -7,7 +7,7 @@ HELP_TEXT = """
 📋 *Tracking*
 /tasks — Assessments & interviews to complete
 /applied — All applications submitted
-/stats — Your job hunt stats
+/stats — Job hunt stats for your active cycle
 /upcoming — Tasks due in the next 7 days
 
 ✅ *Actions*
@@ -21,6 +21,13 @@ HELP_TEXT = """
 /scan — Scan Gmail for new tasks
 /add <company> [date] [type] — Add a task manually
 /connect — Connect your Gmail account
+
+🔄 *Cycles*
+/cycles — View all your cycles
+/newcycle — Start a new cycle
+/endcycle — End the current cycle
+/switchcycle — Switch to a different cycle
+
 /help — Show this message
 """.strip()
 

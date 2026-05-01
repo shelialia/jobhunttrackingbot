@@ -1,7 +1,7 @@
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
-from ..db import users, tasks
+from ..db import users, tasks, cycles as cycles_db
 
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -34,7 +34,9 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             except ValueError:
                 pass
 
-    task_id = tasks.insert_manual_task(telegram_id, company, "", task_type, deadline)
+    cycle = cycles_db.get_active_cycle(telegram_id)
+    cycle_id = cycle["id"] if cycle else None
+    task_id = tasks.insert_manual_task(telegram_id, company, "", task_type, deadline, cycle_id=cycle_id)
     await update.message.reply_text(
         f"➕ Added: *{company}* — {task_type.upper()}"
         + (f", due {deadline[:10]}" if deadline else "")
