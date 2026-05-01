@@ -46,6 +46,12 @@ def _escape_codeblock(text: str) -> str:
     return text.replace("\\", "\\\\").replace("`", "\\`")
 
 
+def _escape_markdown(text: str) -> str:
+    for ch in "_*[]()~`>#+-=|{}.!":
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
+
 async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
     if not users.get_user(telegram_id):
@@ -97,7 +103,7 @@ async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if role:
         title += f" - {role}"
 
-    lines = [title, "──────────────────────────────────────────"]
+    lines = []
     for row in chain_rows:
         if row["type"] == "application":
             emoji, label = "✅", "Applied"
@@ -124,6 +130,6 @@ async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         update.message,
         timeline_content.split("\n"),
         parse_mode=ParseMode.MARKDOWN_V2,
-        prefix="```timeline\n",
+        prefix=f"*{_escape_markdown(title)}*\n```timeline\n",
         suffix="\n```",
     )
