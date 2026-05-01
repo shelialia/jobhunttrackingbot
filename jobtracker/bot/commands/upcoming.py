@@ -4,8 +4,17 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks
 from ..message_utils import reply_chunked_lines
+from ..time_utils import parse_datetime, relative_day_label
 
 _EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞", "application": "📝"}
+
+
+def _task_datetime(row) -> datetime:
+    raw = row["interview_date"] if row["type"] == "interview" else row["deadline"]
+    dt = parse_datetime(raw)
+    if dt is None:
+        raise ValueError("Missing task datetime")
+    return dt
 
 
 async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -18,9 +27,11 @@ async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lines = ["📅 <b>Due in the next 7 days:</b>\n"]
     for row in rows:
-        dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
-        days = (dt - datetime.utcnow()).days
-        tag = "🔴 TODAY" if days == 0 else f"{days}d"
+        _ = _task_datetime(row)
+        tag = relative_day_label(
+            row["interview_date"] if row["type"] == "interview" else row["deadline"],
+            is_deadline=(row["type"] != "interview"),
+        )
         emoji = _EMOJI.get(row["type"], "📌")
         role_line = f"\n   <i>{escape(row['role'])}</i>" if row["role"] else ""
         lines.append(

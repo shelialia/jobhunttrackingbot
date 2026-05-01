@@ -1,8 +1,8 @@
 from html import escape
-from datetime import datetime
 from telegram import Bot
 from ..db import tasks as tasks_db, users as users_db
 from ..message_utils import send_chunked_lines
+from ..time_utils import now_sgt, relative_day_label
 
 _TASK_EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞"}
 
@@ -22,27 +22,9 @@ def _format_task(row) -> str:
     type_label = escape(row["type"].upper())
     role = escape(row["role"]) if row["role"] else ""
     if row["type"] == "interview":
-        interview_dt = row["interview_date"]
-        if interview_dt:
-            dt = interview_dt if isinstance(interview_dt, datetime) else datetime.fromisoformat(interview_dt)
-            days = (dt - datetime.utcnow()).days
-            if days < 0:
-                deadline_str = f"⚠️ OVERDUE {abs(days)}d ago"
-            elif days == 0:
-                deadline_str = "🔴 TODAY"
-            else:
-                deadline_str = f"{days}d remaining"
-        else:
-            deadline_str = "UNSCHEDULED"
+        deadline_str = relative_day_label(row["interview_date"], is_deadline=False)
     elif row["deadline"]:
-        dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
-        days = (dt - datetime.utcnow()).days
-        if days < 0:
-            deadline_str = f"⚠️ OVERDUE {abs(days)}d ago"
-        elif days == 0:
-            deadline_str = "🔴 DUE TODAY"
-        else:
-            deadline_str = f"{days}d remaining"
+        deadline_str = relative_day_label(row["deadline"], is_deadline=True)
     else:
         deadline_str = "no deadline"
 
@@ -69,7 +51,7 @@ async def send_daily_digest(bot: Bot) -> None:
         offers = tasks_db.get_applications_by_status(telegram_id, "offer")
         rejections = tasks_db.get_applications_by_status(telegram_id, "rejected")
 
-        lines = [f"☀️ <b>Daily Digest</b> <code>{datetime.utcnow().strftime('%d %b %Y')}</code>", ""]
+        lines = [f"☀️ <b>Daily Digest</b> <code>{now_sgt().strftime('%d %b %Y')}</code>", ""]
         primary_sections = [
             ("📝 Applications Submitted", applications, _format_application),
             ("💻 Pending Assessments", assessments, _format_task),

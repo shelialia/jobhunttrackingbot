@@ -1,34 +1,19 @@
-from datetime import datetime
 from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks
 from ..message_utils import reply_chunked_lines
+from ..time_utils import relative_day_label
 
 _EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞"}
 
 
 def _task_status_label(row) -> str:
     if row["type"] == "interview":
-        interview_dt = row["interview_date"]
-        if interview_dt:
-            dt = interview_dt if isinstance(interview_dt, datetime) else datetime.fromisoformat(interview_dt)
-            days = (dt - datetime.utcnow()).days
-            if days < 0:
-                return f"⚠️ OVERDUE {abs(days)}d ago"
-            if days == 0:
-                return "🔴 TODAY"
-            return f"{days}d remaining"
-        return "UNSCHEDULED"
+        return relative_day_label(row["interview_date"], is_deadline=False)
 
     if row["deadline"]:
-        dt = row["deadline"] if isinstance(row["deadline"], datetime) else datetime.fromisoformat(row["deadline"])
-        days = (dt - datetime.utcnow()).days
-        if days < 0:
-            return f"⚠️ OVERDUE {abs(days)}d ago"
-        if days == 0:
-            return "🔴 DUE TODAY"
-        return f"{days}d remaining"
+        return relative_day_label(row["deadline"], is_deadline=True)
 
     return "no deadline"
 
