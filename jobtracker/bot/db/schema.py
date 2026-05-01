@@ -75,7 +75,9 @@ def init_db() -> None:
                 company_normalised TEXT,
                 role TEXT,
                 role_normalised TEXT,
-                interview_round TEXT,
+                interview_round INTEGER,
+                is_final_round INTEGER NOT NULL DEFAULT 0,
+                round_label TEXT,
                 deadline TIMESTAMP,
                 interview_date TIMESTAMP,
                 interview_platform TEXT,
@@ -103,7 +105,11 @@ def init_db() -> None:
         if "cycle_id" not in cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN cycle_id INTEGER REFERENCES cycles(id)")
         if "interview_round" not in cols:
-            conn.execute("ALTER TABLE tasks ADD COLUMN interview_round TEXT")
+            conn.execute("ALTER TABLE tasks ADD COLUMN interview_round INTEGER")
+        if "is_final_round" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN is_final_round INTEGER NOT NULL DEFAULT 0")
+        if "round_label" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN round_label TEXT")
         if "interview_date" not in cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN interview_date TIMESTAMP")
         if "interview_platform" not in cols:

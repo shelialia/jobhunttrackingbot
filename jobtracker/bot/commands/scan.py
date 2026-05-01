@@ -58,6 +58,19 @@ def _format_scan_datetime(dt: datetime) -> str:
     return dt.astimezone(_SGT).strftime("%d %b %I:%M %p").lstrip("0")
 
 
+def determine_interview_round(
+    gemini_round: int | None,
+    is_final_round: int,
+    root_app_id: int,
+) -> int:
+    if gemini_round is not None:
+        return gemini_round
+
+    _ = is_final_round
+    existing = tasks_db.count_interviews_in_chain(root_app_id)
+    return existing + 1
+
+
 def _calculate_scan_start(
     user: dict,
     cycle: dict,
@@ -174,7 +187,13 @@ async def _run_scan(
         role = result.get("role") or ""
         deadline = result.get("deadline")
         link = result.get("link")
-        interview_round = result.get("interview_round")
+        raw_interview_round = result.get("interview_round")
+        try:
+            interview_round = int(raw_interview_round) if raw_interview_round not in (None, "") else None
+        except (TypeError, ValueError):
+            interview_round = None
+        is_final_round = 1 if result.get("is_final_round") in (1, True, "1") else 0
+        round_label = result.get("round_label")
         interview_date = result.get("interview_date")
         interview_platform = result.get("interview_platform")
         email_subtype = result.get("email_subtype") or "unknown"
@@ -207,6 +226,17 @@ async def _run_scan(
                 continue
 
         if task_type == "interview":
+            root_application_id = tasks_db.find_or_create_application_for_linking(
+                telegram_id, company, role, cycle_id=cycle_id, email_date=email_date
+            )
+            if root_application_id is None:
+                continue
+            root_application_id = tasks_db.get_root_application_id(root_application_id) or root_application_id
+            interview_round = determine_interview_round(
+                interview_round,
+                is_final_round,
+                root_application_id,
+            )
             existing_interview = tasks_db.find_existing_interview(
                 telegram_id,
                 cycle_id,
@@ -214,10 +244,18 @@ async def _run_scan(
                 interview_round=interview_round,
             )
             if existing_interview is not None:
+                if existing_interview["gmail_id"] == gmail_id:
+                    continue
+
                 source_application_id = existing_interview["source_application_id"]
                 if source_application_id is None:
-                    source_application_id = tasks_db.find_or_create_application_for_linking(
-                        telegram_id, company, role, cycle_id=cycle_id, email_date=email_date
+                    source_application_id = tasks_db.ensure_interview_chain(
+                        telegram_id,
+                        cycle_id,
+                        root_application_id,
+                        company,
+                        role,
+                        interview_round,
                     )
                 tasks_db.update_interview_task(
                     existing_interview["id"],
@@ -229,6 +267,8 @@ async def _run_scan(
                     link=link,
                     email_date=email_date,
                     interview_round=interview_round,
+                    is_final_round=1 if is_final_round else None,
+                    round_label=round_label,
                     interview_date=interview_date,
                     interview_platform=interview_platform,
                     confirmed_at=email_date if email_subtype == "confirmation" else None,
@@ -236,7 +276,18 @@ async def _run_scan(
                 items.append((company, task_type, role, email_date, confidence < 0.7))
                 continue
 
-        if task_type in ("oa", "hirevue", "interview"):
+            source_application_id = tasks_db.ensure_interview_chain(
+                telegram_id,
+                cycle_id,
+                root_application_id,
+                company,
+                role,
+                interview_round,
+            )
+            if source_application_id is None:
+                continue
+
+        if task_type in ("oa", "hirevue"):
             source_application_id = tasks_db.find_or_create_application_for_linking(
                 telegram_id, company, role, cycle_id=cycle_id, email_date=email_date
             )
@@ -281,6 +332,8 @@ async def _run_scan(
             company, role, deadline, link, source_application_id,
             email_date=email_date, cycle_id=cycle_id,
             interview_round=interview_round if task_type == "interview" else None,
+            is_final_round=is_final_round if task_type == "interview" else 0,
+            round_label=round_label if task_type == "interview" else None,
             interview_date=interview_date if task_type == "interview" else None,
             interview_platform=interview_platform if task_type == "interview" else None,
             confirmed_at=(

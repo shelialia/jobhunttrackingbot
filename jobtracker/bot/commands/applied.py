@@ -35,4 +35,6 @@ async def applied(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lines[0] = f"📝 <b>Applications Submitted</b> ({len(rows)} total)\n"
     lines.append("\n<i>Use /offer &lt;app_number&gt; or /reject &lt;app_number&gt; to update status</i>")
+    lines.append("<i>Use /timeline &lt;number&gt; to see full progress</i>")
+    lines.append("<i>e.g. /timeline 1</i>")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")

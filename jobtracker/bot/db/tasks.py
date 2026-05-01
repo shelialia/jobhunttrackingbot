@@ -122,7 +122,9 @@ def insert_task(
     email_date: Optional[str] = None,
     cycle_id: Optional[int] = None,
     status: str = "incomplete",
-    interview_round: Optional[str] = None,
+    interview_round: Optional[int] = None,
+    is_final_round: int = 0,
+    round_label: Optional[str] = None,
     interview_date: Optional[str] = None,
     interview_platform: Optional[str] = None,
     confirmed_at: Optional[str] = None,
@@ -136,13 +138,15 @@ def insert_task(
                 """INSERT INTO tasks
                    (telegram_id, cycle_id, source_application_id, gmail_id, type,
                     company, company_normalised, role, role_normalised,
-                    interview_round, deadline, interview_date, interview_platform,
-                    confirmed_at, link, email_date, status, is_ghost)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    interview_round, is_final_round, round_label, deadline,
+                    interview_date, interview_platform, confirmed_at, link,
+                    email_date, status, is_ghost)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (telegram_id, cycle_id, source_application_id, gmail_id,
                  task_type, company, company_n, role, role_n,
-                 interview_round, deadline, interview_date, interview_platform,
-                 confirmed_at, link, email_date, status, is_ghost),
+                 interview_round, is_final_round, round_label, deadline,
+                 interview_date, interview_platform, confirmed_at, link,
+                 email_date, status, is_ghost),
             )
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -306,7 +310,7 @@ def find_existing_interview(
     telegram_id: int,
     cycle_id: int,
     company: str,
-    interview_round: Optional[str] = None,
+    interview_round: Optional[int] = None,
 ) -> Optional[sqlite3.Row]:
     company_n = _normalise(company)
 
@@ -320,10 +324,9 @@ def find_existing_interview(
             (telegram_id, cycle_id, company_n),
         ).fetchall()
 
-    if interview_round:
-        round_n = _normalise(interview_round)
+    if interview_round is not None:
         for row in rows:
-            if _normalise(row["interview_round"] or "") == round_n:
+            if row["interview_round"] == interview_round:
                 return row
         return None
 
@@ -350,7 +353,9 @@ def update_interview_task(
     deadline: Optional[str] = None,
     link: Optional[str] = None,
     email_date: Optional[str] = None,
-    interview_round: Optional[str] = None,
+    interview_round: Optional[int] = None,
+    is_final_round: Optional[int] = None,
+    round_label: Optional[str] = None,
     interview_date: Optional[str] = None,
     interview_platform: Optional[str] = None,
     confirmed_at: Optional[str] = None,
@@ -364,6 +369,7 @@ def update_interview_task(
         conn.execute(
             """UPDATE tasks
                SET gmail_id = COALESCE(gmail_id, ?),
+                   is_ghost = CASE WHEN ? IS NOT NULL THEN 0 ELSE is_ghost END,
                    source_application_id = COALESCE(source_application_id, ?),
                    company = COALESCE(?, company),
                    company_normalised = CASE
@@ -376,6 +382,8 @@ def update_interview_task(
                        ELSE role_normalised
                    END,
                    interview_round = COALESCE(?, interview_round),
+                   is_final_round = COALESCE(?, is_final_round),
+                   round_label = COALESCE(?, round_label),
                    deadline = COALESCE(?, deadline),
                    interview_date = COALESCE(?, interview_date),
                    interview_platform = COALESCE(?, interview_platform),
@@ -391,6 +399,7 @@ def update_interview_task(
                WHERE id = ?""",
             (
                 gmail_id,
+                gmail_id,
                 source_application_id,
                 company_value,
                 company_n,
@@ -399,6 +408,8 @@ def update_interview_task(
                 role_n,
                 role_n,
                 interview_round,
+                is_final_round,
+                round_label,
                 deadline,
                 interview_date,
                 interview_platform,
@@ -412,6 +423,283 @@ def update_interview_task(
             ),
         )
 
+
+def get_root_application_id(task_id: int) -> Optional[int]:
+    current_id = task_id
+
+    with get_connection() as conn:
+        while current_id is not None:
+            row = conn.execute(
+                "SELECT id, type, source_application_id FROM tasks WHERE id = ?",
+                (current_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            if row["type"] == "application":
+                return row["id"]
+            current_id = row["source_application_id"]
+
+    return None
+
+
+def count_interviews_in_chain(root_application_id: int) -> int:
+    with get_connection() as conn:
+        return conn.execute(
+            """WITH RECURSIVE chain AS (
+                   SELECT id, type FROM tasks WHERE id = ?
+                   UNION ALL
+                   SELECT t.id, t.type
+                   FROM tasks t
+                   JOIN chain c ON t.source_application_id = c.id
+               )
+               SELECT COUNT(*) FROM chain WHERE type = 'interview'""",
+            (root_application_id,),
+        ).fetchone()[0]
+
+
+def get_interview_by_round(root_application_id: int, interview_round: int) -> Optional[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute(
+            """WITH RECURSIVE chain AS (
+                   SELECT * FROM tasks WHERE id = ?
+                   UNION ALL
+                   SELECT t.*
+                   FROM tasks t
+                   JOIN chain c ON t.source_application_id = c.id
+               )
+               SELECT * FROM chain
+               WHERE type = 'interview' AND interview_round = ?
+               ORDER BY is_ghost ASC, created_at ASC
+               LIMIT 1""",
+            (root_application_id, interview_round),
+        ).fetchone()
+
+
+def create_ghost_interview(
+    telegram_id: int,
+    cycle_id: int,
+    source_application_id: int,
+    company: str,
+    role: str,
+    interview_round: int,
+) -> Optional[int]:
+    return insert_task(
+        telegram_id=telegram_id,
+        gmail_id=None,
+        task_type="interview",
+        company=company,
+        role=role,
+        deadline=None,
+        link=None,
+        source_application_id=source_application_id,
+        is_ghost=1,
+        email_date=None,
+        cycle_id=cycle_id,
+        status="incomplete",
+        interview_round=interview_round,
+        is_final_round=0,
+        round_label=None,
+        interview_date=None,
+        interview_platform=None,
+        confirmed_at=None,
+    )
+
+
+def ensure_interview_chain(
+    telegram_id: int,
+    cycle_id: int,
+    root_application_id: int,
+    company: str,
+    role: str,
+    interview_round: int,
+) -> Optional[int]:
+    if interview_round <= 1:
+        return root_application_id
+
+    previous = get_interview_by_round(root_application_id, interview_round - 1)
+    if previous is not None:
+        return previous["id"]
+
+    parent_id = ensure_interview_chain(
+        telegram_id,
+        cycle_id,
+        root_application_id,
+        company,
+        role,
+        interview_round - 1,
+    )
+    if parent_id is None:
+        return None
+
+    ghost_id = create_ghost_interview(
+        telegram_id,
+        cycle_id,
+        parent_id,
+        company,
+        role,
+        interview_round - 1,
+    )
+    return ghost_id
+
+
+def get_cycle_applications(telegram_id: int, cycle_id: int) -> list[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT * FROM tasks
+               WHERE telegram_id = ? AND cycle_id = ?
+               AND type = 'application' AND is_ghost = 0
+               ORDER BY created_at DESC""",
+            (telegram_id, cycle_id),
+        ).fetchall()
+
+
+def get_chain_rows(root_application_id: int) -> list[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute(
+            """WITH RECURSIVE chain AS (
+                   SELECT * FROM tasks WHERE id = ?
+                   UNION ALL
+                   SELECT t.*
+                   FROM tasks t
+                   JOIN chain c ON t.source_application_id = c.id
+               )
+               SELECT * FROM chain
+               ORDER BY COALESCE(email_date, created_at) ASC, id ASC""",
+            (root_application_id,),
+        ).fetchall()
+
+
+def _get_cycle_chain_rows(telegram_id: int, cycle_id: int) -> list[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute(
+            """WITH RECURSIVE chain AS (
+                   SELECT
+                       id,
+                       id AS root_id,
+                       type,
+                       source_application_id,
+                       company,
+                       role,
+                       cycle_id,
+                       interview_round,
+                       is_final_round,
+                       status,
+                       is_ghost,
+                       email_date,
+                       created_at
+                   FROM tasks
+                   WHERE type = 'application'
+                     AND is_ghost = 0
+                     AND cycle_id = ?
+                     AND telegram_id = ?
+                   UNION ALL
+                   SELECT
+                       t.id,
+                       c.root_id,
+                       t.type,
+                       t.source_application_id,
+                       t.company,
+                       t.role,
+                       t.cycle_id,
+                       t.interview_round,
+                       t.is_final_round,
+                       t.status,
+                       t.is_ghost,
+                       t.email_date,
+                       t.created_at
+                   FROM tasks t
+                   JOIN chain c ON t.source_application_id = c.id
+                   WHERE t.type != 'irrelevant'
+               )
+               SELECT * FROM chain""",
+            (cycle_id, telegram_id),
+        ).fetchall()
+
+
+def get_sankey_edges(telegram_id: int, cycle_id: int) -> list[tuple[str, str, int]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """WITH RECURSIVE chain AS (
+                   SELECT
+                       id,
+                       id AS root_id,
+                       type,
+                       source_application_id
+                   FROM tasks
+                   WHERE type = 'application'
+                     AND is_ghost = 0
+                     AND cycle_id = ?
+                     AND telegram_id = ?
+                   UNION ALL
+                   SELECT
+                       t.id,
+                       c.root_id,
+                       t.type,
+                       t.source_application_id
+                   FROM tasks t
+                   JOIN chain c ON t.source_application_id = c.id
+                   WHERE t.type != 'irrelevant'
+               )
+               SELECT p.type AS source, c.type AS target, COUNT(*) AS flow
+               FROM chain c
+               JOIN chain p ON c.source_application_id = p.id AND c.root_id = p.root_id
+               WHERE c.type != 'irrelevant'
+               GROUP BY p.type, c.type
+               ORDER BY p.type, c.type""",
+            (cycle_id, telegram_id),
+        ).fetchall()
+    return [(row["source"], row["target"], row["flow"]) for row in rows]
+
+
+def get_interview_breakdown(telegram_id: int, cycle_id: int) -> dict:
+    rows = _get_cycle_chain_rows(telegram_id, cycle_id)
+    apps = {row["id"]: row for row in rows if row["type"] == "application"}
+    chains: dict[int, list[sqlite3.Row]] = {app_id: [] for app_id in apps}
+
+    for row in rows:
+        chains.setdefault(row["root_id"], []).append(row)
+
+    total_rounds = 0
+    leaderboard: list[dict] = []
+    buckets = {"1 round": 0, "2-3 rounds": 0, "4+ rounds": 0}
+
+    for app_id, chain_rows in chains.items():
+        interview_rows = [row for row in chain_rows if row["type"] == "interview"]
+        if not interview_rows:
+            continue
+
+        max_round = max((row["interview_round"] or 0) for row in interview_rows)
+        total_rounds += max_round
+
+        if max_round == 1:
+            buckets["1 round"] += 1
+        elif 2 <= max_round <= 3:
+            buckets["2-3 rounds"] += 1
+        else:
+            buckets["4+ rounds"] += 1
+
+        outcome = "ongoing"
+        if any(row["type"] == "offer" for row in chain_rows) or apps[app_id]["status"] == "offer":
+            outcome = "offer"
+        elif any(row["type"] == "rejection" for row in chain_rows) or apps[app_id]["status"] == "rejected":
+            outcome = "rejected"
+
+        leaderboard.append(
+            {
+                "app_id": app_id,
+                "company": apps[app_id]["company"] or "Unknown",
+                "rounds": max_round,
+                "outcome": outcome,
+            }
+        )
+
+    leaderboard.sort(key=lambda row: (-row["rounds"], row["company"].lower()))
+
+    return {
+        "total_rounds": total_rounds,
+        "leaderboard": leaderboard[:3],
+        "buckets": buckets,
+    }
 
 def find_task_by_company(telegram_id: int, company: str) -> Optional[sqlite3.Row]:
     company_n = _normalise(company)
@@ -452,6 +740,7 @@ def insert_manual_task(
 
 def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
     now_iso = datetime.utcnow().isoformat()
+    interview_breakdown = get_interview_breakdown(telegram_id, cycle_id)
     with get_connection() as conn:
         applied = conn.execute(
             "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type = 'application' AND is_ghost = 0",
@@ -513,6 +802,9 @@ def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
             "response_rate": round(responded / applied * 100) if applied else 0,
             "offer_rate": round(offered / applied * 100, 1) if applied else 0,
             "avg_days": round(avg_days_raw) if avg_days_raw else 0,
+            "total_interview_rounds": interview_breakdown["total_rounds"],
+            "round_leaderboard": interview_breakdown["leaderboard"],
+            "interview_depth_buckets": interview_breakdown["buckets"],
         }
 
 

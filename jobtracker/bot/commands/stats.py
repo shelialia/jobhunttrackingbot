@@ -1,3 +1,4 @@
+from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 from ..db import tasks as tasks_db, cycles as cycles_db, users
@@ -30,7 +31,39 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"{'Avg days to reply:':<20} {s['avg_days']:>4}"
     )
 
+    leaderboard_lines = []
+    outcome_labels = {
+        "offer": "Offer 🎉",
+        "rejected": "Rejected 😭",
+        "ongoing": "Ongoing 👀",
+    }
+    for idx, row in enumerate(s["round_leaderboard"], 1):
+        leaderboard_lines.append(
+            f"{idx}. {row['company']:<18} {row['rounds']} rounds → {outcome_labels[row['outcome']]}"
+        )
+    if not leaderboard_lines:
+        leaderboard_lines.append("No interview chains yet")
+
+    bucket_lines = [
+        f"{label:<12} {count:>3}"
+        for label, count in (
+            ("1 round", s["interview_depth_buckets"]["1 round"]),
+            ("2-3 rounds", s["interview_depth_buckets"]["2-3 rounds"]),
+            ("4+ rounds", s["interview_depth_buckets"]["4+ rounds"]),
+        )
+    ]
+
     await update.message.reply_text(
-        f"📊 *{cycle['name']}*\n\n```\n{table}\n```",
-        parse_mode="Markdown",
+        (
+            f"📊 <b>{escape(cycle['name'])}</b>\n\n"
+            f"<pre>{escape(table)}</pre>\n"
+            f"💀 <b>Total interview rounds suffered:</b> {s['total_interview_rounds']}\n\n"
+            f"🏆 <b>Most Rounds Survived</b>\n"
+            f"────────────────────────\n"
+            f"<pre>{escape(chr(10).join(leaderboard_lines))}</pre>\n"
+            f"📊 <b>Interview Depth</b>\n"
+            f"───────────────────\n"
+            f"<pre>{escape(chr(10).join(bucket_lines))}</pre>"
+        ),
+        parse_mode="HTML",
     )

@@ -14,6 +14,8 @@ from .commands.scan import scan
 from .commands.tasks import tasks_cmd
 from .commands.applied import applied
 from .commands.stats import stats
+from .commands.sankey import sankey
+from .commands.timeline import timeline
 from .commands.done import done
 from .commands.offer import offer
 from .commands.reject import reject
@@ -39,7 +41,9 @@ _COMMANDS = [
     BotCommand("applied", "All applications submitted"),
     BotCommand("upcoming", "Tasks due in the next 7 days"),
     BotCommand("stats", "Job hunt stats for your active cycle"),
+    BotCommand("sankey", "Export your funnel Sankey diagram"),
     BotCommand("scan", "Manually scan Gmail now"),
+    BotCommand("timeline", "Show the full progress for one application"),
     BotCommand("done", "Mark a task as done"),
     BotCommand("offer", "Mark an application as an offer"),
     BotCommand("reject", "Mark an application as rejected"),
@@ -72,7 +76,9 @@ def main() -> None:
     app.add_handler(CommandHandler("tasks", tasks_cmd))
     app.add_handler(CommandHandler("applied", applied))
     app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("sankey", sankey))
     app.add_handler(CommandHandler("upcoming", upcoming))
+    app.add_handler(CommandHandler("timeline", timeline))
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("offer", offer))
     app.add_handler(CommandHandler("reject", reject))

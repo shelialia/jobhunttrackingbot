@@ -8,7 +8,9 @@ HELP_TEXT = """
 /tasks — Assessments & interviews to complete
 /applied — All applications submitted
 /stats — Job hunt stats for your active cycle
+/sankey — Export your funnel Sankey diagram
 /upcoming — Tasks due in the next 7 days
+/timeline &lt;app_number&gt; — Show full progress for one application
 
 ✅ <b>Actions</b>
 /done &lt;task_number&gt; — Mark a task as done
