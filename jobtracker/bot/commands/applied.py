@@ -2,14 +2,25 @@ from datetime import datetime
 from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
-from ..db import tasks
+from ..db import cycles as cycles_db, tasks, users
 
 _STATUS_EMOJI = {"done": "✅", "offer": "🎉", "reject": "❌", "rejected": "❌"}
 
 
 async def applied(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
-    rows = tasks.get_applications(telegram_id)
+    if not users.get_user(telegram_id):
+        await update.message.reply_text("Please run /start first.")
+        return
+
+    cycle = cycles_db.get_active_cycle(telegram_id)
+    if not cycle:
+        await update.message.reply_text(
+            "No active cycle. Use /newcycle to create one, or /cycles to switch to an existing one."
+        )
+        return
+
+    rows = tasks.get_cycle_applications(telegram_id, cycle["id"])
 
     if not rows:
         await update.message.reply_text(

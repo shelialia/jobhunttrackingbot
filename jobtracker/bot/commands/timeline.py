@@ -54,7 +54,16 @@ async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Use /timeline <app_number>.")
         return
 
-    rows = tasks_db.get_cycle_applications(telegram_id, cycle["id"])
+    app_ids = context.user_data.get("last_applied")
+    if app_ids:
+        rows = []
+        for task_id in app_ids:
+            row = tasks_db.get_task_by_id(task_id)
+            if row is not None and row["cycle_id"] == cycle["id"] and row["type"] == "application":
+                rows.append(row)
+    else:
+        rows = tasks_db.get_cycle_applications(telegram_id, cycle["id"])
+
     if app_index < 1 or app_index > len(rows):
         await update.message.reply_text("That application number is out of range for the active cycle.")
         return

@@ -16,6 +16,17 @@ def _normalise(text: str) -> str:
     return text
 
 
+def _as_datetime(value) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _find_matching_application(
     telegram_id: int,
     company: str,
@@ -332,12 +343,7 @@ def find_existing_interview(
 
     cutoff = datetime.utcnow() - timedelta(days=7)
     for row in rows:
-        created_at = row["created_at"]
-        if isinstance(created_at, str):
-            try:
-                created_at = datetime.fromisoformat(created_at)
-            except ValueError:
-                continue
+        created_at = _as_datetime(row["created_at"])
         if created_at and created_at >= cutoff:
             return row
     return None
@@ -583,6 +589,7 @@ def _get_cycle_chain_rows(telegram_id: int, cycle_id: int) -> list[sqlite3.Row]:
                        cycle_id,
                        interview_round,
                        is_final_round,
+                       deadline,
                        status,
                        is_ghost,
                        email_date,
@@ -603,6 +610,7 @@ def _get_cycle_chain_rows(telegram_id: int, cycle_id: int) -> list[sqlite3.Row]:
                        t.cycle_id,
                        t.interview_round,
                        t.is_final_round,
+                       t.deadline,
                        t.status,
                        t.is_ghost,
                        t.email_date,
@@ -741,21 +749,24 @@ def insert_manual_task(
 def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
     now_iso = datetime.utcnow().isoformat()
     interview_breakdown = get_interview_breakdown(telegram_id, cycle_id)
+    chain_rows = _get_cycle_chain_rows(telegram_id, cycle_id)
+    now_dt = _as_datetime(now_iso)
+    interviewing_roots = {
+        row["root_id"]
+        for row in chain_rows
+        if row["type"] == "interview"
+        and row["status"] == "incomplete"
+        and row["root_id"] is not None
+        and (deadline_dt := _as_datetime(row["deadline"])) is not None
+        and deadline_dt >= now_dt
+    }
     with get_connection() as conn:
         applied = conn.execute(
             "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type = 'application' AND is_ghost = 0",
             (telegram_id, cycle_id),
         ).fetchone()[0]
 
-        interviewing = conn.execute(
-            """SELECT COUNT(DISTINCT source_application_id) FROM tasks
-               WHERE telegram_id = ? AND cycle_id = ?
-               AND type = 'interview' AND status = 'incomplete'
-               AND source_application_id IS NOT NULL
-               AND deadline IS NOT NULL
-               AND julianday(deadline) >= julianday(?)""",
-            (telegram_id, cycle_id, now_iso),
-        ).fetchone()[0]
+        interviewing = len(interviewing_roots)
 
         offered = conn.execute(
             "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type = 'application' AND is_ghost = 0 AND status = 'offer'",

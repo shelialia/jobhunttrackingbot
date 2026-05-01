@@ -298,7 +298,7 @@ async def _run_scan(
                 role,
                 cycle_id=cycle_id,
                 email_date=email_date,
-                is_ghost_if_missing=0,
+                is_ghost_if_missing=1,
             )
             if source_application_id is None:
                 continue
@@ -319,7 +319,6 @@ async def _run_scan(
             if task_id is None:
                 continue
 
-            tasks_db.promote_ghost_application(source_application_id)
             tasks_db.mark_status(
                 source_application_id,
                 "offer" if task_type == "offer" else "rejected",
