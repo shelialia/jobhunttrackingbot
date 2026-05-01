@@ -46,7 +46,7 @@ _COMMANDS = [
     BotCommand("done", "Mark a task as done"),
     BotCommand("offer", "Mark an application as an offer"),
     BotCommand("reject", "Mark an application as rejected"),
-    BotCommand("remove", "Delete a task"),
+    BotCommand("remove", "Delete an application or task"),
     BotCommand("add", "Manually add a task"),
     BotCommand("connect", "Connect your Gmail account"),
     BotCommand("cycles", "View all your cycles"),
