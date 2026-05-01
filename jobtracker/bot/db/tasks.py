@@ -803,6 +803,34 @@ def find_task_by_company(telegram_id: int, company: str) -> Optional[sqlite3.Row
 
 def delete_task(task_id: int) -> None:
     with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id, type, source_application_id FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        if row is None:
+            return
+
+        if row["type"] == "application":
+            conn.execute(
+                """WITH RECURSIVE chain AS (
+                       SELECT id FROM tasks WHERE id = ?
+                       UNION ALL
+                       SELECT t.id
+                       FROM tasks t
+                       JOIN chain c ON t.source_application_id = c.id
+                   )
+                   DELETE FROM tasks
+                   WHERE id IN (SELECT id FROM chain)""",
+                (task_id,),
+            )
+            return
+
+        conn.execute(
+            """UPDATE tasks
+               SET source_application_id = ?
+               WHERE source_application_id = ?""",
+            (row["source_application_id"], row["id"]),
+        )
         conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
 
 
