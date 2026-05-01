@@ -45,13 +45,17 @@ async def timeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if not context.args:
-        await update.message.reply_text("Use /timeline <app_number>.")
+        await update.message.reply_text(
+            "Usage: /timeline <app_number>\n\nRun /applied to see the numbered list."
+        )
         return
 
     try:
         app_index = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("Use /timeline <app_number>.")
+        await update.message.reply_text(
+            "❌ Invalid number. Run /applied first to see the list."
+        )
         return
 
     app_ids = context.user_data.get("last_applied")
