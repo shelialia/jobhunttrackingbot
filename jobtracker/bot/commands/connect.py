@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from ..db import users
 from ..gmail.auth import get_auth_url
@@ -20,10 +20,11 @@ async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     auth_url = get_auth_url(telegram_id)
+    keyboard = [[InlineKeyboardButton("🔗 Connect Gmail", url=auth_url)]]
     await update.message.reply_text(
-        "🔗 *Connect your Gmail account*\n\n"
-        "Tap the link below to authorise Gmail access:\n\n"
-        f"{auth_url}\n\n"
+        "📬 *Connect your Gmail account*\n\n"
+        "Tap the button below to authorise Gmail access.\n"
         "After authorising, use /scan to do your first inbox scan.",
         parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
