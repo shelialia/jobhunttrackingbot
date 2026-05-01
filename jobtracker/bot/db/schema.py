@@ -1,10 +1,36 @@
 import sqlite3
 import os
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
 
 DB_PATH = os.getenv("DB_PATH", "data/jobtracker.db")
+
+
+def _convert_timestamp(value: bytes):
+    if not value:
+        return None
+
+    text = value.decode("utf-8").strip()
+    if not text:
+        return None
+
+    normalized = text.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(normalized)
+    except ValueError:
+        try:
+            dt = datetime.strptime(text, "%Y-%m-%d")
+        except ValueError:
+            return text
+
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+sqlite3.register_converter("TIMESTAMP", _convert_timestamp)
 
 
 def get_connection() -> sqlite3.Connection:
