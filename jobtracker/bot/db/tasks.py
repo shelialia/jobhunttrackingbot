@@ -334,6 +334,7 @@ def insert_manual_task(
 
 
 def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
+    now_iso = datetime.utcnow().isoformat()
     with get_connection() as conn:
         applied = conn.execute(
             "SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ? AND type = 'application' AND is_ghost = 0",
@@ -343,9 +344,11 @@ def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
         interviewing = conn.execute(
             """SELECT COUNT(DISTINCT source_application_id) FROM tasks
                WHERE telegram_id = ? AND cycle_id = ?
-               AND type IN ('oa', 'hirevue', 'interview') AND status = 'incomplete'
-               AND source_application_id IS NOT NULL""",
-            (telegram_id, cycle_id),
+               AND type = 'interview' AND status = 'incomplete'
+               AND source_application_id IS NOT NULL
+               AND deadline IS NOT NULL
+               AND julianday(deadline) >= julianday(?)""",
+            (telegram_id, cycle_id, now_iso),
         ).fetchone()[0]
 
         offered = conn.execute(
@@ -364,12 +367,6 @@ def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
                WHERE app.telegram_id = ? AND app.cycle_id = ?
                AND app.type = 'application' AND app.is_ghost = 0 AND app.status = 'incomplete'
                AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.source_application_id = app.id)""",
-            (telegram_id, cycle_id),
-        ).fetchone()[0]
-
-        pending = conn.execute(
-            """SELECT COUNT(*) FROM tasks WHERE telegram_id = ? AND cycle_id = ?
-               AND type IN ('oa', 'hirevue', 'interview') AND status = 'incomplete'""",
             (telegram_id, cycle_id),
         ).fetchone()[0]
 
@@ -396,7 +393,6 @@ def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
             "offered": offered,
             "rejected": rejected,
             "ghosted": ghosted,
-            "pending": pending,
             "response_rate": round(responded / applied * 100) if applied else 0,
             "offer_rate": round(offered / applied * 100, 1) if applied else 0,
             "avg_days": round(avg_days_raw) if avg_days_raw else 0,

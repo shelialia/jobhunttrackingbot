@@ -24,7 +24,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"{'Offered':<16} {s['offered']:>4}\n"
         f"{'Rejected':<16} {s['rejected']:>4}\n"
         f"{'Ghosted':<16} {s['ghosted']:>4}\n"
-        f"{'Pending':<16} {s['pending']:>4}\n"
         f"\n"
         f"{'Response rate:':<20} {s['response_rate']:>3}%\n"
         f"{'Offer rate:':<20} {s['offer_rate']:>5}%\n"
