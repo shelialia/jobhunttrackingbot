@@ -473,7 +473,7 @@ async def run_daily_auto_scan(bot: Bot) -> None:
             continue
 
         tz_name = user["timezone"] if "timezone" in user.keys() else None
-        if now_local(tz_name).hour != 12:
+        if now_local(tz_name).hour != 13:
             continue
 
         telegram_id = user["telegram_id"]

@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from .schema import get_connection
 
@@ -20,11 +20,15 @@ def _as_datetime(value) -> Optional[datetime]:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value
-    try:
-        return datetime.fromisoformat(value)
-    except (TypeError, ValueError):
-        return None
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _find_matching_application(
@@ -741,7 +745,7 @@ def _get_cycle_chain_rows(telegram_id: int, cycle_id: int) -> list[sqlite3.Row]:
                        cycle_id,
                        interview_round,
                        is_final_round,
-                       deadline,
+                       COALESCE(interview_date, deadline) AS deadline,
                        status,
                        is_ghost,
                        email_date,
@@ -762,7 +766,7 @@ def _get_cycle_chain_rows(telegram_id: int, cycle_id: int) -> list[sqlite3.Row]:
                        t.cycle_id,
                        t.interview_round,
                        t.is_final_round,
-                       t.deadline,
+                       COALESCE(t.interview_date, t.deadline) AS deadline,
                        t.status,
                        t.is_ghost,
                        t.email_date,
@@ -979,18 +983,24 @@ def insert_manual_task(
 
 
 def get_cycle_stats(telegram_id: int, cycle_id: int) -> dict:
-    now_iso = datetime.utcnow().isoformat()
     interview_breakdown = get_interview_breakdown(telegram_id, cycle_id)
     chain_rows = _get_cycle_chain_rows(telegram_id, cycle_id)
-    now_dt = _as_datetime(now_iso)
+    terminal_roots = {
+        row["root_id"]
+        for row in chain_rows
+        if (
+            row["type"] in ("offer", "rejection")
+            or (row["type"] == "application" and row["status"] in ("offer", "rejected"))
+        )
+        and row["root_id"] is not None
+    }
     interviewing_roots = {
         row["root_id"]
         for row in chain_rows
         if row["type"] == "interview"
-        and row["status"] == "incomplete"
+        and row["is_ghost"] == 0
         and row["root_id"] is not None
-        and (deadline_dt := _as_datetime(row["deadline"])) is not None
-        and deadline_dt >= now_dt
+        and row["root_id"] not in terminal_roots
     }
     responded_roots = {
         row["root_id"]

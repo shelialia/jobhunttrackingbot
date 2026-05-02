@@ -92,7 +92,7 @@ def main() -> None:
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         run_daily_auto_scan,
-        CronTrigger(minute=50, timezone="UTC"),
+        CronTrigger(minute=0, timezone="UTC"),
         args=[app.bot],
         id="daily_digest",
         name="Daily auto-scan",
