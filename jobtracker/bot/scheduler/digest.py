@@ -74,7 +74,7 @@ def _format_action_item(row, deadline_html: str | None = None) -> str:
     role = escape(row["role"]) if row["role"] else ""
     type_label = escape(_format_action_type(row))
 
-    parts = [f"- <b>{company}</b>"]
+    parts = [f"• <b>{company}</b>"]
     if role:
         parts.append(f" <i>{role}</i>")
     parts.append(f" <code>{type_label}</code>")
