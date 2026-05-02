@@ -120,3 +120,7 @@ def init_db() -> None:
         user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
         if "last_manual_scanned_at" not in user_cols:
             conn.execute("ALTER TABLE users ADD COLUMN last_manual_scanned_at TIMESTAMP")
+        if "timezone" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Singapore'")
+        if "last_digest_sent_date" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN last_digest_sent_date TEXT")

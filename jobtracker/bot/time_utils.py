@@ -1,7 +1,27 @@
-from datetime import datetime, timedelta, timezone
+import os
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-SGT = timezone(timedelta(hours=8))
+DEFAULT_TIMEZONE = os.getenv("BOT_TIMEZONE", "Asia/Singapore")
+
+
+def _timezone(tz_name: str | None = None) -> ZoneInfo:
+    try:
+        return ZoneInfo(tz_name or DEFAULT_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("Asia/Singapore")
+
+
+def now_local(tz_name: str | None = None) -> datetime:
+    return datetime.now(_timezone(tz_name))
+
+
+def to_local(value, tz_name: str | None = None) -> datetime | None:
+    dt = parse_datetime(value)
+    if dt is None:
+        return None
+    return dt.astimezone(_timezone(tz_name))
 
 
 def parse_datetime(value) -> datetime | None:
@@ -19,22 +39,19 @@ def parse_datetime(value) -> datetime | None:
 
 
 def now_sgt() -> datetime:
-    return datetime.now(SGT)
+    return now_local("Asia/Singapore")
 
 
 def to_sgt(value) -> datetime | None:
-    dt = parse_datetime(value)
-    if dt is None:
-        return None
-    return dt.astimezone(SGT)
+    return to_local(value, "Asia/Singapore")
 
 
-def relative_day_label(value, *, is_deadline: bool) -> str:
-    target = to_sgt(value)
+def relative_day_label(value, *, is_deadline: bool, tz_name: str | None = None) -> str:
+    target = to_local(value, tz_name)
     if target is None:
         return "no deadline" if is_deadline else "UNSCHEDULED"
 
-    days = (target.date() - now_sgt().date()).days
+    days = (target.date() - now_local(tz_name).date()).days
     if days < 0:
         return f"⚠️ OVERDUE {abs(days)}d ago"
     if days == 0:

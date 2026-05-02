@@ -10,10 +10,10 @@ from ..gmail.fetch import fetch_new_messages
 from ..gmail.parse import extract_subject_and_body, get_gmail_id, get_email_date
 from ..llm.classify import classify_email
 from ..message_utils import send_chunked_lines
+from ..time_utils import now_local, to_local
 
 logger = logging.getLogger(__name__)
 _CLASSIFY_RETRY_DELAYS = (2, 5, 10)
-_SGT = timezone(timedelta(hours=8))
 
 def _format_date(email_date: str | None) -> str:
     if not email_date:
@@ -66,8 +66,9 @@ def _to_utc(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def _format_scan_datetime(dt: datetime) -> str:
-    return dt.astimezone(_SGT).strftime("%d %b %I:%M %p").lstrip("0")
+def _format_scan_datetime(dt: datetime, tz_name: str | None = None) -> str:
+    local_dt = to_local(dt, tz_name) or dt.astimezone(timezone.utc)
+    return local_dt.strftime("%d %b %I:%M %p").lstrip("0")
 
 
 def determine_interview_round(
@@ -150,6 +151,7 @@ async def _run_scan(
             text="⚠️ No active cycle. Use /newcycle to create one before scanning.",
         )
         return
+    tz_name = user["timezone"] if "timezone" in user.keys() else None
     cycle_id = cycle["id"]
     scan_start, window_from_last_manual_scan, first_manual_scan_for_cycle = _calculate_scan_start(
         user,
@@ -157,7 +159,7 @@ async def _run_scan(
         scan_started_at,
         scan_mode,
     )
-    formatted_since = _format_scan_datetime(scan_start)
+    formatted_since = _format_scan_datetime(scan_start, tz_name)
 
     await bot.send_message(
         chat_id=telegram_id,
@@ -413,7 +415,7 @@ async def _run_scan(
     rejections = [i for i in items if i[1] == "rejection"]
     offers = [i for i in items if i[1] == "offer"]
 
-    since_text = escape(_format_scan_datetime(scan_start))
+    since_text = escape(_format_scan_datetime(scan_start, tz_name))
     if scan_mode == "manual":
         header = f"✅ <b>Scan complete!</b> <code>(since {since_text})</code>"
         if first_manual_scan_for_cycle:
@@ -421,6 +423,15 @@ async def _run_scan(
     else:
         suffix = " — last manual scan" if window_from_last_manual_scan else ""
         header = f"🤖 <b>Daily auto-scan complete!</b> <code>(since {since_text}{escape(suffix)})</code>"
+
+    no_new_items = not applications and not assessments and not interviews and not offers and not rejections
+    if scan_mode == "auto" and no_new_items:
+        await bot.send_message(
+            chat_id=telegram_id,
+            text=f"{header}\n\nNo new updates.",
+            parse_mode="HTML",
+        )
+        return
 
     lines = [header, ""]
     for group_label, group in (
@@ -453,21 +464,39 @@ async def _run_scan(
 
 
 async def run_daily_auto_scan(bot: Bot) -> None:
+    from ..scheduler.digest import send_action_needed
+
     now_utc = datetime.now(timezone.utc)
 
     for user in users.get_all_users():
         if not user["gmail_token_json"]:
             continue
 
+        tz_name = user["timezone"] if "timezone" in user.keys() else None
+        local_now = now_local(tz_name)
+
+        if local_now.hour != 12:
+            continue
+
+        local_date = local_now.date().isoformat()
+        if user["last_digest_sent_date"] == local_date:
+            continue
+
         telegram_id = user["telegram_id"]
-        user_dict = dict(user)
+
         await _run_scan(
             bot,
             telegram_id,
-            user_dict,
+            dict(user),
             scan_started_at=now_utc,
             scan_mode="auto",
         )
+
+        cycle = cycles_db.get_active_cycle(telegram_id)
+        if cycle:
+            await send_action_needed(bot, telegram_id, cycle["id"], tz_name)
+
+        users.update_last_digest_sent_date(telegram_id, local_date)
 
 
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

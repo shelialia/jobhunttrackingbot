@@ -2,16 +2,16 @@ from datetime import datetime
 from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
-from ..db import tasks
+from ..db import tasks, users
 from ..message_utils import reply_chunked_lines
-from ..time_utils import parse_datetime, relative_day_label
+from ..time_utils import relative_day_label, to_local
 
 _EMOJI = {"oa": "💻", "hirevue": "🎥", "interview": "📞", "application": "📝"}
 
 
-def _task_datetime(row) -> datetime:
+def _task_datetime(row, tz_name: str | None = None) -> datetime:
     raw = row["interview_date"] if row["type"] == "interview" else row["deadline"]
-    dt = parse_datetime(raw)
+    dt = to_local(raw, tz_name)
     if dt is None:
         raise ValueError("Missing task datetime")
     return dt
@@ -19,6 +19,8 @@ def _task_datetime(row) -> datetime:
 
 async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
+    user = users.get_user(telegram_id)
+    tz_name = user["timezone"] if user and "timezone" in user.keys() else None
     rows = tasks.get_upcoming_tasks(telegram_id)
 
     if not rows:
@@ -27,10 +29,11 @@ async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lines = ["📅 <b>Due in the next 7 days:</b>\n"]
     for row in rows:
-        _ = _task_datetime(row)
+        _ = _task_datetime(row, tz_name)
         tag = relative_day_label(
             row["interview_date"] if row["type"] == "interview" else row["deadline"],
             is_deadline=(row["type"] != "interview"),
+            tz_name=tz_name,
         )
         emoji = _EMOJI.get(row["type"], "📌")
         role_line = f"\n   <i>{escape(row['role'])}</i>" if row["role"] else ""

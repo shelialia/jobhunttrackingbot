@@ -28,7 +28,7 @@ from .commands.newcycle import newcycle
 from .commands.switchcycle import switchcycle
 from .commands.cycle_callbacks import handle_cycle_callback
 from .commands.text_input import handle_text_message
-from .scheduler.digest import send_daily_digest
+from .commands.scan import run_daily_auto_scan
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -43,7 +43,7 @@ _COMMANDS = [
     BotCommand("sankey", "Export your funnel Sankey diagram"),
     BotCommand("scan", "Manually scan Gmail now"),
     BotCommand("timeline", "Show the full progress for one application"),
-    BotCommand("done", "Mark a task as done"),
+    BotCommand("done", "Mark an assessment or interview as done"),
     BotCommand("offer", "Mark an application as an offer"),
     BotCommand("reject", "Mark an application as rejected"),
     BotCommand("remove", "Delete an application or task"),
@@ -91,11 +91,11 @@ def main() -> None:
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        send_daily_digest,
-        CronTrigger(hour=1, minute=0),
+        run_daily_auto_scan,
+        CronTrigger(hour=4, minute=22, timezone="UTC"),
         args=[app.bot],
         id="daily_digest",
-        name="Daily digest",
+        name="Daily auto-scan",
         replace_existing=True,
     )
     scheduler.start()
