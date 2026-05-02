@@ -473,13 +473,7 @@ async def run_daily_auto_scan(bot: Bot) -> None:
             continue
 
         tz_name = user["timezone"] if "timezone" in user.keys() else None
-        local_now = now_local(tz_name)
-
-        if local_now.hour != 12:
-            continue
-
-        local_date = local_now.date().isoformat()
-        if user["last_digest_sent_date"] == local_date:
+        if now_local(tz_name).hour != 12:
             continue
 
         telegram_id = user["telegram_id"]
@@ -495,8 +489,6 @@ async def run_daily_auto_scan(bot: Bot) -> None:
         cycle = cycles_db.get_active_cycle(telegram_id)
         if cycle:
             await send_action_needed(bot, telegram_id, cycle["id"], tz_name)
-
-        users.update_last_digest_sent_date(telegram_id, local_date)
 
 
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
