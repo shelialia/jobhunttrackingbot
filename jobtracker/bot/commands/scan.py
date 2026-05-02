@@ -72,12 +72,12 @@ def _format_scan_datetime(dt: datetime, tz_name: str | None = None) -> str:
 
 
 def determine_interview_round(
-    gemini_round: int | None,
+    model_round: int | None,
     is_final_round: int,
     root_app_id: int,
 ) -> int:
-    if gemini_round is not None:
-        return gemini_round
+    if model_round is not None:
+        return model_round
 
     _ = is_final_round
     existing = tasks_db.count_interviews_in_chain(root_app_id)

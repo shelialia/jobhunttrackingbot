@@ -29,7 +29,7 @@ def extract_subject_and_body(message: dict) -> tuple[str, str]:
     headers = message.get("payload", {}).get("headers", [])
     subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "")
     body = _extract_body(message.get("payload", {}))
-    # Truncate body to keep Gemini prompt size reasonable
+    # Truncate body to keep the model prompt size reasonable.
     return subject, body[:4000]
 
 

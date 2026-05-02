@@ -34,7 +34,7 @@ At minimum, you will need:
 - Python 3.11+
 - A Telegram bot token
 - Google OAuth credentials with Gmail API enabled
-- A Gemini API key
+- A Google AI Studio API key for Gemma
 
 Install dependencies:
 

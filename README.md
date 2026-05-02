@@ -5,7 +5,7 @@ A self-hosted Telegram bot that scans Gmail for job application updates, classif
 This project is designed for open-source + BYOK use:
 - bring your own Telegram bot token
 - bring your own Google OAuth credentials
-- bring your own Gemini API key
+- bring your own Google AI Studio API key for Gemma
 - run your own bot instance and keep your own Gmail tokens/data
 
 ---
@@ -132,7 +132,7 @@ The bot reads Gmail through OAuth 2.0.
    - `GOOGLE_CLIENT_SECRET`
 6. Add your Gmail account as a test user if the app is still in testing mode
 
-### 3. Gemini API key
+### 3. Google AI Studio API key
 
 1. Go to Google AI Studio
 2. Create an API key
@@ -164,7 +164,7 @@ TELEGRAM_BOT_TOKEN=your_telegram_token
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 OAUTH_REDIRECT_URI=http://localhost:5001/oauth/callback
-GEMINI_API_KEY=your_gemini_api_key
+GEMINI_API_KEY=your_google_ai_studio_api_key
 DB_PATH=data/jobtracker.db
 BOT_TIMEZONE=Asia/Singapore
 FLASK_DEBUG=false

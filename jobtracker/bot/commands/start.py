@@ -36,7 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         INTRO_TEXT +
         "⚠️ <b>Privacy Notice</b>\n\n"
         "This bot reads your Gmail to track job applications automatically. "
-        "Relevant emails are processed by an AI model (currently Google Gemini).\n\n"
+        "Relevant emails are processed by an AI model (currently Gemma via Google AI Studio).\n\n"
         "We only scan emails matching job-related subject keywords. "
         "However, we cannot guarantee unrelated emails won't occasionally be processed.\n\n"
         "<b>Do not use this bot if you are uncomfortable with your emails being scanned by an AI.</b>\n\n"

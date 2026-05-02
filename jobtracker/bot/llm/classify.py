@@ -128,7 +128,7 @@ def classify_email(subject: str, body: str, email_date: str | None = None) -> di
     response = _model.generate_content(prompt, generation_config=_GENERATION_CONFIG)
     text = _extract_response_text(response)
 
-    print(f"GEMINI  : {text}")
+    print(f"MODEL   : {text}")
     print(f"{'='*60}\n")
 
     # Strip accidental markdown fences

@@ -41,7 +41,7 @@ That means:
 
 - users bring their own Telegram bot token
 - users bring their own Google OAuth credentials
-- users bring their own Gemini API key
+- users bring their own Google AI Studio API key for Gemma
 - Gmail tokens and scan history stay in the user's own deployment
 
 ## Important implementation decisions
@@ -190,7 +190,7 @@ Fixes:
 
 - separate interview rounds in DB
 - round-aware Sankey nodes
-- if Gemini gives no explicit round, infer it from the current interview count in the chain
+- if the model gives no explicit round, infer it from the current interview count in the chain
 - if final round is detected, keep `is_final_round = 1` and still use the round count / explicit round logic consistently
 
 ### 4. Telegram chunking for large lists
@@ -270,7 +270,7 @@ The project currently uses:
 
 - `gemma-4-31b-it`
 
-This is handled through the Gemini client stack, and transient upstream failures do happen.
+This is handled through the Google Generative AI client stack, and transient upstream failures do happen.
 
 Current mitigation:
 
