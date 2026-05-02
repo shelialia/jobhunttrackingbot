@@ -21,6 +21,7 @@ Completed:
    - round 2
    - final round
 5. Sankey diagram generation
+6. Daily auto-scan and action reminder flow
 
 Still worth rechecking periodically:
 
@@ -86,14 +87,62 @@ This applies both to funnel stats and Sankey rendering.
 
 ### Timezone behavior
 
-Current command UX is based on SGT:
+Command UX is based on each user's stored timezone:
 
 - reminder labels
 - `TODAY`
 - `OVERDUE`
 - `Xd remaining`
+- daily auto-scan timing
 
-This is intentional for now.
+The default timezone comes from `BOT_TIMEZONE`, falling back to `Asia/Singapore`.
+New users store that value in `users.timezone`.
+
+Telegram does not provide a reliable user timezone to bots, so BYOK/self-hosted deployments should configure `BOT_TIMEZONE` explicitly.
+
+### Daily auto-scan and reminders
+
+The scheduler wakes hourly and calls `run_daily_auto_scan`.
+
+Each user is scanned when their local hour is `09:00`.
+
+Expected behavior:
+
+- scan Gmail using the normal incremental scan window
+- send the grouped scan summary when new emails are classified
+- send `No new updates.` when the scan finds no new classified emails
+- send a second action-needed reminder message when pending items exist
+
+Action-needed reminders are grouped by:
+
+- assessments
+- interviews
+
+Each group is sorted:
+
+1. unscheduled
+2. overdue
+3. upcoming by soonest date
+
+The action reminder does not create usable `/done` indexes by itself; users should run `/tasks` before using `/done` or `/remove`.
+
+### Task indexes
+
+`/tasks` keeps separate numbered lists for assessments and interviews.
+
+Current command syntax:
+
+- `/done <assessment_index>`
+- `/done i<interview_index>`
+- `/remove <assessment_index>`
+- `/remove i<interview_index>`
+
+`/applied` keeps the application list:
+
+- `/remove <app_index>`
+- `/timeline <app_index>`
+- `/offer <app_index>`
+- `/reject <app_index>`
 
 ## Bugs fixed
 
@@ -200,6 +249,19 @@ Unscheduled interviews:
 - show as `UNSCHEDULED`
 - should not appear as if they are due on the email arrival date
 
+### 8. Stats interviewing definition
+
+`/stats` is intentionally compact.
+
+`Interviewing` means active application chains that:
+
+- have at least one real non-ghost interview row
+- do not yet have an offer or rejection outcome
+
+This means a completed round 1 still counts as interviewing if the application has not reached an offer/rejection yet.
+
+Applications that already ended in offer/rejection are not counted as currently interviewing, even if they had interviews.
+
 ## Current cautions
 
 ### Open model usage
@@ -233,15 +295,12 @@ That same normalization principle also drives Sankey behavior.
 
 ### Overdue tasks
 
-Current/planned behavior:
+Current behavior:
 
 - tasks remain in `/tasks`
 - tasks remain in `/upcoming` if they are within the upcoming window logic
-- overdue items continue acting as reminders until manually marked done
-
-Exception:
-
-- interviews with past confirmed times should stop showing as active reminders once the scheduled time has passed
+- overdue assessments continue acting as reminders until manually marked done
+- incomplete interviews with past confirmed times show as already happened until manually marked done
 
 ## Future ideas
 

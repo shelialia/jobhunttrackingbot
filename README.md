@@ -26,7 +26,8 @@ This project is designed for open-source + BYOK use:
 - Deduplicates repeated scans by Gmail message id
 - Creates ghost application anchors when a follow-up email arrives before the original application confirmation
 - Tracks interview rounds, final rounds, interview dates, and platforms
-- Sends a daily digest
+- Runs a daily Gmail scan and digest at 9am in the user's configured timezone
+- Sends daily action reminders for unscheduled, overdue, and upcoming assessments/interviews
 - Exposes Telegram commands for tasks, stats, timelines, and a funnel Sankey diagram
 
 ---
@@ -44,10 +45,13 @@ Visible Telegram commands:
 - `/upcoming` - items due in the next 7 days
 - `/stats` - active-cycle stats
 - `/sankey` - export funnel Sankey diagram
-- `/done <task_number>` - mark a task done
+- `/done <assessment_index>` - mark an assessment done
+- `/done i<interview_index>` - mark an interview done
 - `/offer <app_number>` - mark an application as offered
 - `/reject <app_number>` - mark an application as rejected
-- `/remove <task_number or app_number>` - delete an application or task
+- `/remove <app_index>` - delete an application after `/applied`
+- `/remove <assessment_index>` - delete an assessment after `/tasks`
+- `/remove i<interview_index>` - delete an interview after `/tasks`
 - `/add <company> [date] [type]` - add a task manually
 - `/cycles` - view cycles
 - `/newcycle` - start a new cycle
@@ -67,7 +71,8 @@ Internal confirmation flows still use `/confirm`, but it is not advertised in th
   - pending assessments
   - interviews
   - offers / rejections when present
-- Daily digest with the same grouping
+- Daily auto-scan and digest at 9am in the user's configured timezone
+- Daily action reminders grouped into assessments and interviews
 - Interview chain tracking:
   - round number
   - final-round flag
@@ -78,7 +83,8 @@ Internal confirmation flows still use `/confirm`, but it is not advertised in th
 - `/sankey` PNG export with:
   - application / OA / HireVue / interview-round / offer / rejection / ghosted / pending nodes
 - Safe chunking for long bot outputs so large lists do not exceed Telegram message limits
-- Singapore-time reminder labels for:
+- Configurable timezone support through `BOT_TIMEZONE` / `users.timezone`
+- Reminder labels for:
   - `TODAY`
   - `Xd remaining`
   - `OVERDUE`
@@ -160,6 +166,7 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret
 OAUTH_REDIRECT_URI=http://localhost:5001/oauth/callback
 GEMINI_API_KEY=your_gemini_api_key
 DB_PATH=data/jobtracker.db
+BOT_TIMEZONE=Asia/Singapore
 FLASK_DEBUG=false
 ```
 
@@ -215,6 +222,15 @@ If your OAuth callback is not reachable directly, expose port `5001` with a tunn
 - Later scans:
   - use `max(last_scan_timestamp, now - 24 hours)`
 - Both manual scans and auto scans write the latest successful scan timestamp back to the database
+
+### Daily auto-scan
+
+- The bot scheduler wakes hourly
+- Each user is scanned once when their configured local hour is `09:00`
+- The default timezone comes from `BOT_TIMEZONE`
+- New users store that value in `users.timezone`
+- If no new emails are classified, the bot sends `No new updates.`
+- After the scan, pending action items are sent as a separate reminder message when present
 
 ### Scan pipeline
 
@@ -277,6 +293,16 @@ application
 
 ### `/tasks`
 
+The output is split into:
+- assessments
+- interviews
+
+Use:
+- `/done <assessment_index>` for assessments
+- `/done i<interview_index>` for interviews
+- `/remove <assessment_index>` for assessments
+- `/remove i<interview_index>` for interviews
+
 Sorted in this order:
 1. unscheduled
 2. overdue
@@ -321,6 +347,14 @@ Terminal nodes include:
 - `Ghosted`
 - `Pending`
 
+### `/stats`
+
+`Interviewing` means active application chains that:
+- have at least one real interview row
+- do not yet have an offer or rejection outcome
+
+Applications that reached interviews but already ended in offer/rejection do not count as currently interviewing.
+
 ---
 
 ## Project structure
@@ -345,8 +379,9 @@ jobtracker/
 
 - LLM calls are synchronous on purpose right now
 - there is an explicit inter-email sleep in scan flow to stay within low-cost usage
-- reminder labels are shown in Singapore time
-- the daily digest job is scheduled at `01:00` in the host machine's scheduler timezone
+- reminder labels use each user's stored timezone
+- daily auto-scan/digest runs at 9am in each user's stored timezone
+- Telegram does not provide a reliable user timezone, so self-hosted deployments should set `BOT_TIMEZONE`
 - this is designed for self-hosted/BYOK use, not a hosted multi-tenant SaaS
 
 ---
