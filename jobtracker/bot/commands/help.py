@@ -14,10 +14,13 @@ HELP_TEXT = """
 /timeline &lt;app_number&gt; — Show full progress for one application
 
 ✅ <b>Actions</b>
-/done &lt;task_number&gt; — Mark a task as done
+/done &lt;assessment_index&gt; — Mark an assessment as done
+/done i&lt;interview_index&gt; — Mark an interview as done
 /offer &lt;app_number&gt; — Mark an application as an offer
 /reject &lt;app_number&gt; — Mark an application as rejected
-/remove &lt;task_number or app_number&gt; — Delete a task or application
+/remove &lt;app_index&gt; — Delete an application after /applied
+/remove &lt;assessment_index&gt; — Delete an assessment after /tasks
+/remove i&lt;interview_index&gt; — Delete an interview after /tasks
 
 ✏️ <b>Management</b>
 /scan — Scan Gmail for new tasks
