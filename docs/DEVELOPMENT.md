@@ -159,9 +159,12 @@ These should not create three interview rounds.
 Current expected behavior:
 
 - one interview row for that round
-- confirmation updates the existing row
-- `interview_date` gets filled in when the booking is confirmed
-- unscheduled invites remain `UNSCHEDULED`
+- invitation emails create an interview row and infer the next round when the model gives no explicit round
+- invitation emails with no concrete date/time keep `interview_date = NULL` and show as `UNSCHEDULED`
+- scheduling/rescheduling emails without a booked time create or keep an unscheduled interview row
+- confirmation emails update the existing row
+- `interview_date`, `interview_platform`, and `confirmed_at` get filled in when the booking is confirmed
+- interview-like emails with subtype `unknown` are skipped, because general prep notes or recruiter Q&A should not create new rounds
 
 ### 2. Ghost application anchors
 

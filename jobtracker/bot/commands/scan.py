@@ -14,6 +14,23 @@ from ..time_utils import now_local, to_local
 
 logger = logging.getLogger(__name__)
 _CLASSIFY_RETRY_DELAYS = (2, 5, 10)
+_TRACKABLE_INTERVIEW_SUBTYPES = {"invitation", "scheduling", "confirmation"}
+_INTERVIEW_SUBTYPE_ALIASES = {
+    "invite": "invitation",
+    "reschedule": "scheduling",
+    "rescheduling": "scheduling",
+    "scheduled": "confirmation",
+    "confirmed": "confirmation",
+}
+
+
+def _normalise_email_subtype(value: object) -> str:
+    subtype = str(value or "unknown").strip().lower()
+    subtype = _INTERVIEW_SUBTYPE_ALIASES.get(subtype, subtype)
+    if subtype in _TRACKABLE_INTERVIEW_SUBTYPES:
+        return subtype
+    return "unknown"
+
 
 def _format_date(email_date: str | None) -> str:
     if not email_date:
@@ -210,8 +227,14 @@ async def _run_scan(
         round_label = result.get("round_label")
         interview_date = result.get("interview_date")
         interview_platform = result.get("interview_platform")
-        email_subtype = result.get("email_subtype") or "unknown"
+        email_subtype = _normalise_email_subtype(result.get("email_subtype"))
         if task_type == "interview":
+            if email_subtype == "unknown":
+                logger.info(
+                    "Skipping interview-like email with unknown subtype: %r",
+                    subject,
+                )
+                continue
             if is_final_round:
                 round_label = "final"
             elif interview_round is not None and interview_round > 1 and round_label == "phone screen":

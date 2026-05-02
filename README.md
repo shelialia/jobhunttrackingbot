@@ -237,7 +237,7 @@ If your OAuth callback is not reachable directly, expose port `5001` with a tunn
 1. Fetch Gmail messages since the current scan window start
 2. Parse subject, body, Gmail id, and email date
 3. Classify each email with the LLM into structured JSON
-4. Skip `irrelevant`
+4. Skip `irrelevant` and untrackable interview back-and-forth
 5. Link the email into the existing application chain
 6. Insert or update the right task row
 7. Send a grouped scan summary back to Telegram
@@ -247,7 +247,11 @@ If your OAuth callback is not reachable directly, expose port `5001` with a tunn
 - application confirmations create or update the root application row
 - OA / HireVue / interview / offer / rejection follow-ups attach to the latest relevant stage in the existing chain when possible
 - if no application exists yet, a ghost application anchor is created
-- interview confirmations update the existing round instead of creating a new round
+- interview invitations create an interview row; if no round is provided, the bot infers the next round from the existing chain
+- interview invitations with no concrete date/time keep `interview_date` as `NULL` and show as `UNSCHEDULED`
+- interview scheduling/rescheduling emails without a booked time create or keep an unscheduled interview row
+- interview confirmations update the existing round with `interview_date`, `interview_platform`, and `confirmed_at` instead of creating a new round
+- interview-like emails with subtype `unknown` are skipped so prep notes or recruiter Q&A do not create fake rounds
 
 ---
 

@@ -42,7 +42,8 @@ Rules:
                           complete a timed coding test, technical screen, or skills assessment.
 - type = "hirevue"      → a one-way video interview invite (HireVue, Spark Hire, Modern Hire, Montage,
                           or any platform asking you to record video answers to pre-set questions)
-- type = "interview"    → a live interview invite (phone / virtual / on-site) sent during the hiring process
+- type = "interview"    → a live interview invite, scheduling request, rescheduling request, or confirmation
+                          (phone / virtual / on-site) sent during the hiring process
 - type = "offer"        → an offer email from the company (verbal or written offer, offer letter, compensation details, next steps to accept)
 - type = "rejection"    → a rejection / regret email from the company (not moving forward, application unsuccessful, position filled, "unfortunately")
 - type = "irrelevant"   → classify as irrelevant if ANY of the following are true:
@@ -50,6 +51,10 @@ Rules:
     * the role has already been accepted / offer signed (onboarding, team matching, intern intro calls, mentor meetings, pre-start logistics)
     * a general newsletter, recruiter outreach, or job alert (not a specific application response)
     * a scheduling email for a meeting that is NOT part of an active interview process (e.g. intern orientation, team intro)
+    * general recruiter/candidate back-and-forth about an interview that does NOT invite the candidate
+      to an interview, ask them to schedule/reschedule, or confirm a booked interview time
+    * interview preparation details, expected question types, agenda notes, or answers to candidate
+      questions about the interview format/content when no new interview action is required
 - deadline: if an exact date/time is given, convert it to ISO 8601 UTC. If a relative window is given (e.g. "you have 7 days", "complete within 1 week"), calculate the absolute deadline by adding that duration to the email received date provided below. Return null only if no deadline information is present at all.
 - link: the direct assessment or meeting URL if present; null otherwise
 - confidence: your confidence in the classification (0-1)
@@ -59,6 +64,12 @@ Rules:
 - interview_date: for interview emails only, extract the confirmed or proposed interview date/time in ISO 8601 UTC if present. Otherwise null.
 - interview_platform: for interview emails only, extract the interview platform if present (for example: Zoom, Google Meet, Microsoft Teams, phone, onsite). Otherwise null.
 - email_subtype: for interview emails only, classify the email as invitation, scheduling, confirmation, or unknown. Use unknown for non-interview emails.
+  Use scheduling for rescheduling emails too.
+- For interview emails, use type = "interview" only when the email creates or changes a trackable
+  interview event: invitation, scheduling/rescheduling, or confirmation.
+- If an email only discusses an already scheduled interview, preparation advice, possible questions,
+  agenda, interviewer names, or interview format/content, classify it as irrelevant unless it also
+  asks the candidate to schedule/reschedule or confirms a booked interview time.
 - For interview emails, do NOT treat recruiter availability windows, scheduling links, or "please pick a time in the next few days" as the interview date.
 - For interview emails, set deadline only if the email gives an explicit candidate response/booking deadline. If the email is just asking the candidate to schedule using a link and no reply-by deadline is stated, set deadline to null.
 - For interview emails without a confirmed interview time yet, set interview_date to null.
