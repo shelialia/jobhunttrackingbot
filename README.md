@@ -400,10 +400,14 @@ If you open a PR, describe:
 - the expected chain behavior
 - the before/after DB shape if the fix affects linking
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, testing expectations, and contribution guidelines.
+
 For current engineering notes, testing coverage, bug history, and planned work, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md) when participating in the project.
 
 ---
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
