@@ -136,7 +136,11 @@ def classify_email(subject: str, body: str, email_date: str | None = None) -> di
         body=body,
         email_date=email_date or "unknown",
     )
-    response = _model.generate_content(prompt, generation_config=_GENERATION_CONFIG)
+    response = _model.generate_content(
+        prompt,
+        generation_config=_GENERATION_CONFIG,
+        request_options={"timeout": 30},
+    )
     text = _extract_response_text(response)
 
     print(f"MODEL   : {text}")

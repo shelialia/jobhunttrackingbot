@@ -128,10 +128,13 @@ def _calculate_scan_start(
 
 async def _classify_with_retry(subject: str, body: str, email_date: str | None = None) -> dict:
     attempts = len(_CLASSIFY_RETRY_DELAYS) + 1
+    loop = asyncio.get_event_loop()
 
     for attempt in range(1, attempts + 1):
         try:
-            return classify_email(subject, body, email_date=email_date)
+            return await loop.run_in_executor(
+                None, lambda: classify_email(subject, body, email_date=email_date)
+            )
         except (
             google_exceptions.InternalServerError,
             google_exceptions.ServiceUnavailable,
@@ -458,9 +461,9 @@ async def _run_scan(
 
     lines = [header, ""]
     for group_label, group in (
-        ("📝 Applications Submitted", applications),
-        ("💻 Pending Assessments", assessments),
-        ("📞 Interviews", interviews),
+        ("📝 New Applications", applications),
+        ("💻 New Assessments", assessments),
+        ("📞 New Interviews", interviews),
     ):
         lines.append(f"<u><b>{escape(group_label)}</b></u> <b>({len(group)})</b>")
         for company, _, role, date_label, low_conf in group:
